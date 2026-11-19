@@ -1,0 +1,13 @@
+# CTRJack, recompiled by 3dsrecomp port
+
+[package]
+name = "albw-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+zakuro = { path = "/emulation/albw-recomp/zakuro/crates/zakuro" }
+
+# a project of its own, whatever directory it sits in
+[workspace]

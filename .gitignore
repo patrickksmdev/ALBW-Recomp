@@ -1,0 +1,31 @@
+# Game ROMs, dumps and assets (NEVER commit)
+*.cci
+*.3ds
+*.cia
+*.cxi
+*.app
+code.bin
+exheader.bin
+romfs/
+exefs/
+
+# Auto-generated C code from the game binary (NEVER commit)
+albw-port/code/
+**/librecomp.a
+**/recomp.lib
+**/code[0-9][0-9][0-9].c
+**/entries.c
+
+# Build artifacts
+target/
+**/target/
+
+# Upstream tools / reference repos (manage via forks/submodules when ready)
+3dsrecomp/
+zakuro/
+albw-decomp-ai/
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*~
