@@ -1262,9 +1262,16 @@ impl App {
 /// a screen as the presenter takes it, straight from the GPU when it shares the renderer's device and the GPU drew
 /// what the screen shows, otherwise its pixels
 fn shown(system: &mut System, screen: Screen) -> (zakuro_core::Screen, Option<GpuScreen>) {
+    static SEEN_GPU_TOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if let Some(gpu) = system.gpu_screen(screen) {
+        if matches!(screen, Screen::Top) {
+            SEEN_GPU_TOP.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let scale = system.gpu.scale();
         return ((std::sync::Arc::new(Vec::new()), screen.width() * scale, screen.height() * scale), Some(gpu));
+    }
+    if matches!(screen, Screen::Top) && SEEN_GPU_TOP.load(std::sync::atomic::Ordering::Relaxed) {
+        log::warn!("gpu_screen(Top) returned None, falling back to CPU read_screen_scaled");
     }
     (system.read_screen_scaled(screen), None)
 }

@@ -305,15 +305,11 @@ impl VulkanPresenter {
         .map_err(vk_fail("allocating command buffers"))?;
 
         let mut image_available = Vec::with_capacity(FRAMES_IN_FLIGHT);
-        let mut render_finished = Vec::with_capacity(FRAMES_IN_FLIGHT);
+        let render_finished = Vec::new();
         let mut in_flight = Vec::with_capacity(FRAMES_IN_FLIGHT);
         for _ in 0..FRAMES_IN_FLIGHT {
             let semaphore_info = vk::SemaphoreCreateInfo::default();
             image_available.push(
-                unsafe { device.create_semaphore(&semaphore_info, None) }
-                    .map_err(vk_fail("creating a semaphore"))?,
-            );
-            render_finished.push(
                 unsafe { device.create_semaphore(&semaphore_info, None) }
                     .map_err(vk_fail("creating a semaphore"))?,
             );
@@ -541,6 +537,12 @@ impl VulkanPresenter {
 
             self.image_views.push(view);
             self.framebuffers.push(framebuffer);
+            let semaphore = unsafe {
+                self.device
+                    .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+            }
+            .map_err(vk_fail("creating a semaphore"))?;
+            self.render_finished.push(semaphore);
         }
 
         self.stale = false;
@@ -549,6 +551,9 @@ impl VulkanPresenter {
 
     fn destroy_swapchain_resources(&mut self) {
         unsafe {
+            for semaphore in self.render_finished.drain(..) {
+                self.device.destroy_semaphore(semaphore, None);
+            }
             for framebuffer in self.framebuffers.drain(..) {
                 self.device.destroy_framebuffer(framebuffer, None);
             }
@@ -899,7 +904,7 @@ impl Presenter for VulkanPresenter {
         }
 
         let wait = [self.image_available[frame]];
-        let signal = [self.render_finished[frame]];
+        let signal = [self.render_finished[image_index as usize]];
         let stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let buffers = [command_buffer];
         let submit = vk::SubmitInfo::default()
