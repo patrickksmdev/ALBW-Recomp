@@ -119,6 +119,7 @@ impl Library {
     }
 
     /// the game just got code from this build's 3dsrecomp
+    #[allow(dead_code)]
     pub fn recompiled(&mut self, program_id: u64) {
         self.rebuilt.push(program_id);
         for game in self.games.iter_mut().filter(|game| game.program_id == program_id) {

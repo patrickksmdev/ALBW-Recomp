@@ -84,3 +84,4 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 | **M2** | Core Nativo & Zero Fallbacks | Expandir `overrides/` (`sead`, `mem*`, `math`) e auditar `INTERPRET(...)` reais | `[x]` 100% do código executado coberto por C recompilado/nativo |
 | **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[x]` Caminhos quentes de `gsp`, `fs`, `dsp` e `hid` sem IPC emulado |
 | **M4** | Kernel & GPU Desacoplados | Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO e desacoplar renderização Vulkan (`zakuro-gpu`) do modelo de emulador | `[ ]` Executável nativo independente da arquitetura do emulador |
+| **M5** | Recursos Nativos de PC | Menu próprio do ALBW, 60 FPS+, câmera livre, widescreen/resolução nativa e melhorias de qualidade de vida | `[ ]` Experiência nativa de PC completa |

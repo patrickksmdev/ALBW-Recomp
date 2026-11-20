@@ -319,12 +319,6 @@ struct Running {
     system: System,
     path: PathBuf,
     name: String,
-    /// the inputs written down, ZAKURO_RECORD=file, for playing the run back
-    recorder: Option<zakuro_core::replay::Recorder>,
-    /// the inputs a recording wrote down, ZAKURO_REPLAY=file,
-    /// played back in place of the keyboard's and the controllers', and the frames run
-    replay: Option<zakuro_core::replay::Replay>,
-    frame: u64,
     /// frames run since counting_since, for the frame rate
     frames: u32,
     counting_since: Instant,
@@ -337,9 +331,6 @@ impl Running {
             system,
             path,
             name,
-            recorder: None,
-            replay: None,
-            frame: 0,
             frames: 0,
             counting_since: Instant::now(),
             fps: 0.0,
@@ -652,22 +643,6 @@ impl App {
             config.dlc = dlc.into_iter().map(|dlc| dlc.path).collect();
             config.dlp_child = dlp_child.map(|child| child.path);
         }
-        // a recording starts the clock at a known time, for playing it back
-        let record = std::env::var_os("ZAKURO_RECORD").map(PathBuf::from);
-        let clock = zakuro_core::memory::config::host_clock();
-        if record.is_some() {
-            config.clock = Some(clock);
-        }
-        // and plays back from the clock it was made at
-        let replay = match std::env::var_os("ZAKURO_REPLAY").map(PathBuf::from) {
-            Some(file) => {
-                let replay = zakuro_core::replay::Replay::open(&file).map_err(|error| format!("could not read {}, {error}", file.display()))?;
-                log::info!("playing back the inputs in {}", file.display());
-                config.clock = Some(replay.clock());
-                Some(replay)
-            }
-            None => None,
-        };
         let system = loader::load(path, config).map_err(|error| format!("could not open {}, {error}", path.display()))?;
         let outdated = system.recompiled.as_ref().is_some_and(|code| code.outdated());
         // the settings ask for the 3D on the GPU but Vulkan didn't start, only the log said so while the game ran slow
@@ -681,17 +656,7 @@ impl App {
             .or_else(|| Some(library::Smdh::parse(system.title.as_ref()?.exefs_file("icon")?)?.name).filter(|name| !name.is_empty()))
             .or_else(|| path.file_stem().map(|stem| stem.to_string_lossy().into_owned()))
             .unwrap_or_default();
-        let mut game = Running::new(system, path.to_owned(), name);
-        game.replay = replay;
-        if let Some(record) = record {
-            match zakuro_core::replay::Recorder::create(&record, clock) {
-                Ok(recorder) => {
-                    log::info!("recording the inputs to {}", record.display());
-                    game.recorder = Some(recorder);
-                }
-                Err(error) => log::warn!("could not record to {}, {error}", record.display()),
-            }
-        }
+        let game = Running::new(system, path.to_owned(), name);
         // both can be true, and the GPU's is what explains a slow game
         let notes: Vec<String> = [
             in_software.then(|| GPU_FALLBACK.to_owned()),
@@ -1116,14 +1081,7 @@ impl App {
     /// runs one frame of the game
     fn emulate(&mut self) {
         let Some(game) = &mut self.game else { return };
-        let input = match &mut game.replay {
-            Some(replay) => replay.input(game.frame),
-            None => self.gamepads.apply(self.keyboard.state()),
-        };
-        game.frame += 1;
-        if let Some(recorder) = &mut game.recorder {
-            recorder.record(input);
-        }
+        let input = self.gamepads.apply(self.keyboard.state());
         game.system.set_input(input);
         let outcome = game.system.run_frame();
         // the overlay reads the game the program was built on, not another one its library opened

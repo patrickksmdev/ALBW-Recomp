@@ -284,6 +284,7 @@ pub enum CameraSource {
     Nothing,
 }
 
+#[allow(dead_code)]
 impl CameraSource {
     pub const ALL: [CameraSource; 3] = [CameraSource::Webcam, CameraSource::Picture, CameraSource::Nothing];
 
@@ -308,6 +309,7 @@ pub enum MicrophoneSource {
     Nothing,
 }
 
+#[allow(dead_code)]
 impl MicrophoneSource {
     pub const ALL: [MicrophoneSource; 2] = [MicrophoneSource::Computer, MicrophoneSource::Nothing];
 
