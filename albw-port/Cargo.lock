@@ -4154,6 +4154,7 @@ name = "zakuro"
 version = "0.2.32"
 dependencies = [
  "ab_glyph",
+ "cc",
  "cpal",
  "egui",
  "egui-winit",

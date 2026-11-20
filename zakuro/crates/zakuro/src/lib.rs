@@ -5,6 +5,7 @@ mod audio;
 mod cli;
 mod gamepad;
 mod gui;
+mod imgui_ui;
 mod input;
 mod menus;
 mod present;
@@ -104,6 +105,7 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
             menus
         },
         gui: None,
+        imgui: None,
         backend: None,
         window: None,
         audio: None,
@@ -338,6 +340,7 @@ struct App {
     game: Option<Running>,
     menus: Menus,
     gui: Option<Gui>,
+    imgui: Option<imgui_ui::ImGuiUi>,
     // backend must be declared (and so dropped) b4 window, Rust drops struct fields in declaration order,
     // and the GL surface's Drop calls eglDestroySurface,
     // which on Wayland does a protocol round trip against the window's wl_surface
@@ -463,6 +466,7 @@ impl ApplicationHandler for App {
                 backend.set_scaling(self.active.filter.screens(), self.active.integer_scale);
                 backend.set_stereo(self.active.stereo());
                 self.gui = Some(Gui::new(&window));
+                self.imgui = Some(imgui_ui::ImGuiUi::new(&window));
                 self.window = Some(window);
                 self.backend = Some(backend);
                 // the game the command line names starts on the device the presenter may lend the renderer, once there's one
@@ -485,10 +489,15 @@ impl ApplicationHandler for App {
             && !self.menus.over_game();
         // a Tab held down keeps repeating over a message too
         let withheld = tab && (in_game || (repeat && self.game.is_some()));
-        let consumed = match (&mut self.gui, &self.window) {
+        let mut consumed = match (&mut self.gui, &self.window) {
             (Some(gui), Some(window)) if !withheld => gui.event(window, &event),
             _ => false,
         };
+        if let (Some(imgui), Some(window)) = (&self.imgui, &self.window) {
+            if self.menus.menu_open && !self.menus.settings_open && self.menus.game_settings.is_none() {
+                consumed |= imgui.event(window, &event);
+            }
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             // keys let go while another window has the keyboard never come
@@ -596,6 +605,9 @@ impl App {
         let started = self.start_game(path);
         if started.is_err() {
             self.active = self.settings.clone();
+        }
+        if let Some(game) = &mut self.game {
+            game.system.gpu.set_view(self.active.top_shape.width(), self.settings.fov_scale);
         }
         self.apply_layout();
         started
@@ -733,7 +745,7 @@ impl App {
 
     /// is the pointer busy w/ something other than the game
     fn pointer_taken(&self, consumed: bool) -> bool {
-        consumed || self.game.is_none() || self.menus.menu_open || self.gui.as_ref().is_some_and(Gui::wants_pointer)
+        consumed || self.game.is_none() || self.menus.menu_open || self.gui.as_ref().is_some_and(Gui::wants_pointer) || self.imgui.as_ref().is_some_and(imgui_ui::ImGuiUi::wants_pointer)
     }
 
     /// touches the bottom screen while the button is down over it
@@ -815,6 +827,7 @@ impl App {
             if game.system.config.slider_3d != slider {
                 game.system.set_slider_3d(slider);
             }
+            game.system.gpu.set_view(self.active.top_shape.width(), self.settings.fov_scale);
         }
         self.keyboard.set_keys(self.settings.keys.clone());
         self.gamepads.set_buttons(self.settings.pad.clone());
@@ -1119,9 +1132,12 @@ impl App {
         let corner = self.overlay_corner.clone().filter(|_| game.is_some());
         let (menus, settings) = (&mut self.menus, &mut self.settings);
         let mut actions = Vec::new();
-        let overlay = gui.frame(window, |ui| {
+        let draw_egui_pause = self.imgui.is_none();
+        let mut overlay = gui.frame(window, |ui| {
             if let Some((name, fps, recompiled)) = &game {
-                actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, saved.as_deref()));
+                if draw_egui_pause {
+                    actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, saved.as_deref()));
+                }
                 if let Some(text) = &corner {
                     menus::corner(ui.ctx(), text);
                 }
@@ -1134,6 +1150,76 @@ impl App {
             }
             menus.message(ui.ctx());
         });
+
+        let mut imgui_actions = Vec::new();
+        if let Some(imgui) = &mut self.imgui {
+            let layout_idx = settings::Screens::ALL.iter().position(|&s| s == settings.layout).unwrap_or(0) as i32;
+            let shape_idx = settings::TopShape::ALL.iter().position(|&s| s == settings.top_shape).unwrap_or(0) as i32;
+            let filter_idx = settings::Filter::ALL.iter().position(|&f| f == settings.filter).unwrap_or(0) as i32;
+            let mut st = imgui_ui::ImGuiMenuState {
+                display_w: 0.0,
+                display_h: 0.0,
+                dpi_scale: 1.0,
+                delta_time: 1.0 / 60.0,
+                menu_open: menus.menu_open && !menus.settings_open && menus.game_settings.is_none(),
+                show_fps: settings.show_fps,
+                current_fps: game.as_ref().map_or(0.0, |g| g.1),
+                slot: menus.slot as i32,
+                slot_has_save: saved.is_some(),
+                resolution: settings.resolution as i32,
+                scale: settings.scale as i32,
+                layout: layout_idx,
+                top_shape: shape_idx,
+                fov_scale: settings.fov_scale,
+                filter: filter_idx,
+                integer_scale: settings.integer_scale,
+                hardware_rasterizer: settings.hardware_rasterizer,
+                frame_interpolation: settings.frame_interpolation,
+                volume: settings.volume,
+                mute: settings.mute,
+                actions: 0,
+            };
+            imgui.render(window, &mut st, &mut overlay);
+
+            menus.slot = st.slot.clamp(1, 9) as u8;
+            if (st.actions & (1 << 0)) != 0 {
+                imgui_actions.push(Action::Resume);
+            }
+            if (st.actions & (1 << 1)) != 0 {
+                imgui_actions.push(Action::Reset);
+            }
+            if (st.actions & (1 << 2)) != 0 {
+                imgui_actions.push(Action::Fullscreen);
+            }
+            if (st.actions & (1 << 3)) != 0 {
+                imgui_actions.push(Action::SaveState);
+            }
+            if (st.actions & (1 << 4)) != 0 {
+                imgui_actions.push(Action::LoadState);
+            }
+            if (st.actions & (1 << 5)) != 0 {
+                menus.settings_open = true;
+            }
+            if (st.actions & (1 << 6)) != 0 {
+                imgui_actions.push(Action::Quit);
+            }
+            if (st.actions & (1 << 7)) != 0 {
+                settings.hardware_rasterizer = st.hardware_rasterizer;
+                settings.resolution = st.resolution.clamp(1, 6) as u32;
+                settings.frame_interpolation = st.frame_interpolation;
+                settings.scale = st.scale.clamp(1, 6) as u32;
+                settings.layout = settings::Screens::ALL.get(st.layout as usize).copied().unwrap_or_default();
+                settings.top_shape = settings::TopShape::ALL.get(st.top_shape as usize).copied().unwrap_or_default();
+                settings.fov_scale = st.fov_scale.clamp(0.8, 1.5);
+                settings.filter = settings::Filter::ALL.get(st.filter as usize).copied().unwrap_or_default();
+                settings.integer_scale = st.integer_scale;
+                settings.show_fps = st.show_fps;
+                settings.volume = st.volume.clamp(0.0, 1.0);
+                settings.mute = st.mute;
+                imgui_actions.push(Action::Settings);
+            }
+        }
+        actions.extend(imgui_actions);
         for action in actions {
             self.act(action, event_loop);
         }

@@ -557,6 +557,9 @@ pub struct Settings {
     /// how wide the top screen shows
     #[serde(deserialize_with = "or_default")]
     pub top_shape: TopShape,
+    /// 3D camera FOV multiplier (1.0 = default, >1.0 = wider FOV)
+    #[serde(default = "default_fov_scale")]
+    pub fov_scale: f32,
     /// how the 3D shows
     #[serde(deserialize_with = "or_default")]
     pub stereo: Stereo3d,
@@ -612,6 +615,7 @@ impl Default for Settings {
             filter: Filter::Smooth,
             integer_scale: false,
             top_shape: TopShape::Console,
+            fov_scale: 1.0,
             stereo: Stereo3d::Off,
             depth_3d: 50,
             swap_eyes: false,
@@ -638,6 +642,10 @@ impl Default for Settings {
 
 /// a setting's value, or its default when the file holds one this build doesn't know (a newer Zakuro's say),
 /// so one value doesn't lose all the others
+fn default_fov_scale() -> f32 {
+    1.0
+}
+
 fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: serde::Deserializer<'de>,

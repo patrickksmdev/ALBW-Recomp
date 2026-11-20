@@ -681,6 +681,11 @@ impl Gpu {
         false
     }
 
+    /// sets the top screen width (e.g. 426.67 for 16:9) and 3D camera FOV scale
+    pub fn set_view(&mut self, top_width: f32, fov_scale: f32) {
+        self.resources.set_view(top_width, fov_scale);
+    }
+
     /// are the screens the host's GPU draws shown straight from it by a presenter sharing its device, see screen_image
     pub fn shows_directly(&self) -> bool {
         #[cfg(feature = "vulkan")]

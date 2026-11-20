@@ -1593,6 +1593,8 @@ pub struct Hardware {
     rendering: Option<(usize, Option<usize>)>,
     /// what the draws do for frame interpolation
     pub(crate) pass: Pass,
+    pub(crate) top_width: f32,
+    pub(crate) fov_scale: f32,
     /// do draws go into twins at all, frame interpolation turns that on for a title drawing a picture every other refresh
     twins: bool,
     /// draws waiting to go into twins after the rendering they follow ends,
@@ -1832,6 +1834,8 @@ impl Hardware {
                 uploads: false,
                 rendering: None,
                 pass: Pass::Real,
+                top_width: 400.0,
+                fov_scale: 1.0,
                 twins: false,
                 twin_draws: Vec::new(),
                 twin_copies: QuickMap::default(),
@@ -3479,6 +3483,7 @@ impl Hardware {
         memory: &mut M,
         shading: &Shading,
         depth_map: DepthMap,
+        is_3d_pass: bool,
     ) -> Result<ShadingStaged, String> {
         let unit = shading.unit;
         let fingerprint = unit.fingerprint();
@@ -3560,7 +3565,15 @@ impl Hardware {
         }
         words.extend([unit.bool_uniforms as u32, unit.entry_point, 0, 0]);
         words.extend(shading.semantics);
-        words.extend([depth_map.scale.to_bits(), depth_map.offset.to_bits(), 0, 0]);
+        let (_, _, vw, vh) = shading.viewport;
+        let (x_scale, y_scale) = if is_3d_pass && (vw - 240.0).abs() < 1.0 && (vh - 400.0).abs() < 1.0 {
+            let fov = self.fov_scale.clamp(0.5, 2.0);
+            let aspect = 400.0 / self.top_width.max(1.0);
+            (1.0 / fov, aspect / fov)
+        } else {
+            (1.0, 1.0)
+        };
+        words.extend([depth_map.scale.to_bits(), depth_map.offset.to_bits(), x_scale.to_bits(), y_scale.to_bits()]);
         let (x, y, width, height) = shading.viewport;
         words.extend([x, y, width, height].map(f32::to_bits));
         words.extend_from_slice(attributes.as_flattened());
@@ -3833,7 +3846,8 @@ impl Hardware {
                 (indices.len(), offsets, None, (VertexStage::Placed, false))
             }
             Geometry::Shaded(shading) => {
-                let staged = self.stage_shading(memory, shading, depth_map)?;
+                let is_3d_pass = (draw.registers[REG_DEPTH_COLOR_MASK] & 1) != 0 && draw.depth.is_some();
+                let staged = self.stage_shading(memory, shading, depth_map, is_3d_pass)?;
                 (shading.primitives.count(), (0, 0), Some(staged), self.vertex_stage(shading))
             }
         };

@@ -1498,6 +1498,17 @@ impl Resources {
         let _ = pass;
     }
 
+    /// sets the top screen widescreen width and 3D FOV scale for hardware shading
+    pub(crate) fn set_view(&mut self, top_width: f32, fov_scale: f32) {
+        #[cfg(feature = "vulkan")]
+        if let Some(hardware) = self.hardware.as_mut() {
+            hardware.top_width = top_width;
+            hardware.fov_scale = fov_scale;
+        }
+        #[cfg(not(feature = "vulkan"))]
+        let _ = (top_width, fov_scale);
+    }
+
     /// do draws go into twins, frame interpolation drawing the in between pictures
     pub(crate) fn twins(&self) -> bool {
         #[cfg(feature = "vulkan")]
