@@ -66,7 +66,7 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - Auditoria no `albw-run.log`: **99,93%** nativo (`3.826.192.811` instruções recompiladas); os `0,07%` restantes (`0x0016AC14`, `0x003FA6F0`) já são código recompilado (`L_0016AC14`, `L_003FA6F0`) e só rodaram em `cpu.step()` por corte de `budget` de frame/áudio (0 fallbacks reais de `INTERPRET(...)`).
 
 ### Em andamento / Pendente imediato
-- [ ] **M3 (em andamento):** Ponte direta [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (4 overrides ativos sem `svc 0x32`: `gsp::Gpu#0x0008`, `dsp::DSP#0x0013` `FlushDataCache`, `gsp::Gpu#0x000C` `TriggerCmdReqQueue` e `FSFile#0x0802` `Read`). Próximo: abertura/fechamento de `fs` e áudio `dsp`.
+- [ ] **M3 (em andamento):** Ponte direta [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (6 overrides ativos sem `svc 0x32`: `gsp::Gpu#0x0008`, `dsp::DSP#0x0013` `FlushDataCache`, `gsp::Gpu#0x000C` `TriggerCmdReqQueue`, `FSFile#0x0802` `Read`, `FSFile#0x0808` `Close` e `dsp::DSP#0x000C` `ConvertProcessAddressFromDspDram`). Próximo: `fs:USER` open e fechamento do M3.
 
 ---
 

@@ -51,3 +51,24 @@ pub unsafe extern "C" fn albw_fs_read(
     }
     0
 }
+
+/// Direct replacement for `FSFile#0x0808` (Close).
+///
+/// # Safety
+/// `ctx` must be a valid `recomp_abi::Context` whose `user` points to a live `Machine`.
+#[no_mangle]
+pub unsafe extern "C" fn albw_fs_close(ctx: *mut Context, handle: u32) -> u32 {
+    let system = unsafe { system_from_ctx(ctx) };
+    let Some(object) = system.kernel.handles.resolve(handle) else {
+        return errors::INVALID_HANDLE.0;
+    };
+    let Some(KObject::ClientSession(session)) = system.kernel.objects.get(object) else {
+        return errors::INVALID_HANDLE.0;
+    };
+    if session.service != "FSFile" {
+        return errors::INVALID_HANDLE.0;
+    }
+    let file_id = session.subhandle;
+    system.services.fs.files.remove(&file_id);
+    0
+}
