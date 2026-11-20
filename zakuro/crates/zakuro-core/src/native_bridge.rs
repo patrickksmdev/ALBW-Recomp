@@ -1,5 +1,6 @@
 //! Direct host-to-guest native bridges (M3), bypassing svc 0x32 IPC marshaling.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use recomp_abi::Context;
 use zakuro_common::result::errors;
 use zakuro_cpu::Bus;
@@ -91,4 +92,17 @@ pub unsafe extern "C" fn albw_get_view_params(
     if !out_fov_scale.is_null() {
         unsafe { *out_fov_scale = fov_scale; }
     }
+}
+
+static HUD_SCALE_BITS: AtomicU32 = AtomicU32::new(0x3F80_0000); // 1.0f32
+
+/// Updates the HUD scale configured by the PC UI.
+pub fn set_hud_scale(scale: f32) {
+    HUD_SCALE_BITS.store(scale.clamp(0.5, 1.25).to_bits(), Ordering::Relaxed);
+}
+
+/// Returns the current HUD scale configured by the PC UI.
+#[no_mangle]
+pub extern "C" fn albw_get_hud_scale() -> f32 {
+    f32::from_bits(HUD_SCALE_BITS.load(Ordering::Relaxed))
 }

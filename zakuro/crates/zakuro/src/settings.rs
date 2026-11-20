@@ -560,6 +560,9 @@ pub struct Settings {
     /// 3D camera FOV multiplier (1.0 = default, >1.0 = wider FOV)
     #[serde(default = "default_fov_scale")]
     pub fov_scale: f32,
+    /// HUD scale multiplier (1.0 = default, <1.0 = smaller HUD)
+    #[serde(default = "default_hud_scale")]
+    pub hud_scale: f32,
     /// how the 3D shows
     #[serde(deserialize_with = "or_default")]
     pub stereo: Stereo3d,
@@ -616,6 +619,7 @@ impl Default for Settings {
             integer_scale: false,
             top_shape: TopShape::Console,
             fov_scale: 1.0,
+            hud_scale: 1.0,
             stereo: Stereo3d::Off,
             depth_3d: 50,
             swap_eyes: false,
@@ -643,6 +647,10 @@ impl Default for Settings {
 /// a setting's value, or its default when the file holds one this build doesn't know (a newer Zakuro's say),
 /// so one value doesn't lose all the others
 fn default_fov_scale() -> f32 {
+    1.0
+}
+
+fn default_hud_scale() -> f32 {
     1.0
 }
 

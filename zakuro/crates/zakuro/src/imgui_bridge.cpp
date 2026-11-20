@@ -21,6 +21,7 @@ struct ImGuiMenuState {
     int layout;             // 0..=4
     int top_shape;          // 0..=2 (5:3, 16:9, 21:9)
     float fov_scale;        // 0.80..=1.50
+    float hud_scale;        // 0.55..=1.00
     int filter;             // 0..=2
     bool integer_scale;
     bool hardware_rasterizer;
@@ -290,8 +291,16 @@ void albw_imgui_frame(ImGuiMenuState* st) {
                         st->actions |= (1u << 7);
                     }
                     ImGui::SameLine();
-                    if (ImGui::Button("Padrão")) {
+                    if (ImGui::Button("Padrão##fov")) {
                         st->fov_scale = 1.0f;
+                        st->actions |= (1u << 7);
+                    }
+                    if (ImGui::SliderFloat("Escala do HUD", &st->hud_scale, 0.55f, 1.00f, "%.2fx")) {
+                        st->actions |= (1u << 7);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Padrão##hud")) {
+                        st->hud_scale = 1.0f;
                         st->actions |= (1u << 7);
                     }
                     ImGui::Spacing();

@@ -608,6 +608,7 @@ impl App {
         }
         if let Some(game) = &mut self.game {
             game.system.gpu.set_view(self.active.top_shape.width(), self.settings.fov_scale);
+            zakuro_core::native_bridge::set_hud_scale(self.settings.hud_scale);
         }
         self.apply_layout();
         started
@@ -1171,6 +1172,7 @@ impl App {
                 layout: layout_idx,
                 top_shape: shape_idx,
                 fov_scale: settings.fov_scale,
+                hud_scale: settings.hud_scale,
                 filter: filter_idx,
                 integer_scale: settings.integer_scale,
                 hardware_rasterizer: settings.hardware_rasterizer,
@@ -1211,6 +1213,8 @@ impl App {
                 settings.layout = settings::Screens::ALL.get(st.layout as usize).copied().unwrap_or_default();
                 settings.top_shape = settings::TopShape::ALL.get(st.top_shape as usize).copied().unwrap_or_default();
                 settings.fov_scale = st.fov_scale.clamp(0.8, 1.5);
+                settings.hud_scale = st.hud_scale.clamp(0.55, 1.0);
+                zakuro_core::native_bridge::set_hud_scale(settings.hud_scale);
                 settings.filter = settings::Filter::ALL.get(st.filter as usize).copied().unwrap_or_default();
                 settings.integer_scale = st.integer_scale;
                 settings.show_fps = st.show_fps;
