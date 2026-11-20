@@ -6,11 +6,9 @@ mod cli;
 mod gamepad;
 mod gui;
 mod input;
-mod library;
 mod menus;
 mod present;
 mod pro_controller;
-mod report;
 mod settings;
 
 use std::path::{Path, PathBuf};
@@ -28,7 +26,6 @@ use zakuro_gpu::{layout, GpuScreen, Overlay, PresentError, RendererKind, ScreenI
 
 use gui::Gui;
 use input::Keyboard;
-use library::Library;
 use menus::{Action, Menus};
 use present::Backend;
 use settings::{Renderer, Screens, Settings};
@@ -62,7 +59,7 @@ pub fn run(linked: Option<Linked>) {
 
 /// runs the emulator like run does, w/ an overlay over the game
 pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
-    report::init();
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).try_init();
 
     let options = match cli::parse() {
         Ok(options) => options,
@@ -83,7 +80,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
 
     let data_dir = options.data.clone().map(PathBuf::from).or_else(default_data_dir);
     if let Some(dir) = &data_dir {
-        report::to_file(dir);
         bring_saves(dir);
     }
 
@@ -100,7 +96,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
         linked,
         overlay,
         overlay_corner: None,
-        library: Library::new(data_dir.clone()),
         data_dir,
         game: None,
         menus: {
@@ -137,9 +132,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
         return;
     }
 
-    if let Some(folder) = app.settings.games.clone() {
-        app.library.scan(&folder);
-    }
     app.audio = if app.options.mute {
         None
     } else {
@@ -151,22 +143,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
     event_loop.set_control_flow(ControlFlow::Poll);
     if let Err(error) = event_loop.run_app(&mut app) {
         eprintln!("zakuro: {error}");
-    }
-}
-
-/// opens a folder in the system's file manager
-fn show_folder(folder: &Path) {
-    let program = if cfg!(windows) {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    match std::process::Command::new(program).arg(folder).spawn() {
-        // waited for so it leaves nothing behind when it closes (no zombies here)
-        Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
-        Err(error) => log::warn!("showing {}: {error}", folder.display()),
     }
 }
 
@@ -360,7 +336,6 @@ struct App {
     overlay_corner: Option<String>,
     data_dir: Option<PathBuf>,
     game: Option<Running>,
-    library: Library,
     menus: Menus,
     gui: Option<Gui>,
     // backend must be declared (and so dropped) b4 window, Rust drops struct fields in declaration order,
@@ -616,10 +591,7 @@ impl App {
         if let Some(audio) = &self.audio {
             audio.clear();
         }
-        // one from the command line isn't in the library (or not yet),
-        // and a Download Play child listed apart from its game is there w/ no id
-        let known = self.library.games.iter().find(|game| game.path == path && game.problem.is_none()).map(|game| game.program_id);
-        let program_id = known.or_else(|| Some(zakuro_fs::Title::load(path).ok()?.program_id()));
+        let program_id = zakuro_fs::Title::load(path).ok().map(|t| t.program_id());
         self.active = self.settings.for_game(program_id);
         let started = self.start_game(path);
         if started.is_err() {
@@ -631,31 +603,15 @@ impl App {
 
     /// loads the game at path, the settings in force are for it
     fn start_game(&mut self, path: &Path) -> Result<(), String> {
-        let mut config = self.config(&self.active);
-        // the update, DLC and Download Play child found w/ the game in the library
-        if let Some(game) = self.library.games.iter().find(|game| game.path == path) {
-            config.update = game.update.as_ref().map(|update| update.path.clone());
-            config.dlc = game.dlc.iter().map(|dlc| dlc.path.clone()).collect();
-            config.dlp_child = game.dlp_child.as_ref().map(|child| child.path.clone());
-        } else if let Some((update, dlc, dlp_child)) = library::addons_beside(path) {
-            // one from the command line starts b4 the library's scan is in, or isn't in its folder, what's next to it goes w/ it
-            config.update = update.map(|update| update.path);
-            config.dlc = dlc.into_iter().map(|dlc| dlc.path).collect();
-            config.dlp_child = dlp_child.map(|child| child.path);
-        }
+        let config = self.config(&self.active);
         let system = loader::load(path, config).map_err(|error| format!("could not open {}, {error}", path.display()))?;
         let outdated = system.recompiled.as_ref().is_some_and(|code| code.outdated());
         // the settings ask for the 3D on the GPU but Vulkan didn't start, only the log said so while the game ran slow
         let in_software = system.config.hardware_renderer && !system.gpu.draws_on_gpu();
-        let name = self
-            .library
-            .games
-            .iter()
-            .find(|game| game.path == path)
-            .map(|game| game.name.clone())
-            .or_else(|| Some(library::Smdh::parse(system.title.as_ref()?.exefs_file("icon")?)?.name).filter(|name| !name.is_empty()))
-            .or_else(|| path.file_stem().map(|stem| stem.to_string_lossy().into_owned()))
-            .unwrap_or_default();
+        let name = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "A Link Between Worlds".to_owned());
         let game = Running::new(system, path.to_owned(), name);
         // both can be true, and the GPU's is what explains a slow game
         let notes: Vec<String> = [
@@ -917,40 +873,9 @@ impl App {
                     self.menus.message = Some(error);
                 }
             }
-            Action::Mods(program_id) => {
-                if let Some(data_dir) = &self.data_dir {
-                    let folder = zakuro_core::mods::dir(data_dir, program_id);
-                    let made = std::fs::create_dir_all(folder.join("romfs")).and_then(|()| std::fs::create_dir_all(folder.join("textures")));
-                    match made {
-                        Ok(()) => show_folder(&folder),
-                        Err(error) => self.menus.message = Some(format!("The mods folder can't be made: {error}")),
-                    }
-                }
-            }
-            Action::ChooseFolder => {
-                if let Some(folder) = rfd::FileDialog::new().set_title("Where your games are").pick_folder() {
-                    self.settings.games = Some(folder.clone());
-                    self.settings.save();
-                    self.library.scan(&folder);
-                }
-            }
             Action::SaveState => self.save_state(),
             Action::LoadState => self.load_state(),
-            Action::ChooseBackground => {
-                let picked = rfd::FileDialog::new()
-                    .set_title("A picture for the library")
-                    .add_filter("Pictures", &["png", "jpg", "jpeg", "webp", "bmp"])
-                    .pick_file();
-                if let Some(file) = picked {
-                    self.settings.background = Some(file);
-                    self.settings.save();
-                }
-            }
-            Action::Rescan => {
-                if let Some(folder) = self.settings.games.clone() {
-                    self.library.scan(&folder);
-                }
-            }
+            Action::ChooseFolder | Action::ChooseBackground | Action::Rescan | Action::Library | Action::CopyReport | Action::Mods(_) => {}
             Action::Resume => {
                 self.menus.menu_open = false;
                 self.keyboard.release();
@@ -962,14 +887,7 @@ impl App {
                     }
                 }
             }
-            Action::Library => self.back_to_library(),
             Action::Fullscreen => self.toggle_fullscreen(),
-            Action::CopyReport => {
-                if let (Some(game), Some(gui)) = (&self.game, &self.gui) {
-                    gui.ctx.copy_text(report::text(&game.name, &game.system));
-                    self.menus.message = Some("The game's details and the end of the log are copied. Paste them in your report and fill in what happens.".into());
-                }
-            }
             Action::Quit => event_loop.exit(),
             Action::Settings => self.apply_settings(),
             Action::Keyboard(text, button) => {
@@ -989,7 +907,6 @@ impl App {
         if now > self.next_frame + CATCH_UP_LIMIT {
             self.next_frame = now;
         }
-        self.library.poll();
         self.poll_gamepads();
 
         // a game waiting on its keyboard waits for the user, not running
@@ -1112,7 +1029,6 @@ impl App {
                     log::error!("{errors}");
                 }
                 let message = format!("The game stopped on a fault. {errors}");
-                self.menus.report = Some((message.clone(), report::text(&game.name, &game.system)));
                 self.menus.message = Some(message);
                 self.back_to_library();
             }
@@ -1201,17 +1117,14 @@ impl App {
         let fast = self.fast_forwarding;
         let keyboard = self.game.as_ref().and_then(|game| game.system.keyboard_request().cloned());
         let corner = self.overlay_corner.clone().filter(|_| game.is_some());
-        let (menus, library, settings) = (&mut self.menus, &self.library, &mut self.settings);
+        let (menus, settings) = (&mut self.menus, &mut self.settings);
         let mut actions = Vec::new();
         let overlay = gui.frame(window, |ui| {
-            match &game {
-                Some((name, fps, recompiled)) => {
-                    actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, saved.as_deref()));
-                    if let Some(text) = &corner {
-                        menus::corner(ui.ctx(), text);
-                    }
+            if let Some((name, fps, recompiled)) = &game {
+                actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, saved.as_deref()));
+                if let Some(text) = &corner {
+                    menus::corner(ui.ctx(), text);
                 }
-                None => actions.extend(menus.library(ui, library, settings)),
             }
             let own = program_id.is_some_and(|id| settings.has_own(id));
             actions.extend(menus.settings(ui.ctx(), settings, own));
@@ -1221,7 +1134,6 @@ impl App {
             }
             menus.message(ui.ctx());
         });
-        self.library.changed = false;
         for action in actions {
             self.act(action, event_loop);
         }

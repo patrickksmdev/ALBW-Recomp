@@ -70,8 +70,12 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - Ponte direta em [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (6 overrides ativos sem `svc 0x32`): `gsp::Gpu#0x0008` e `dsp::DSP#0x0013` (`FlushDataCache`), `gsp::Gpu#0x000C` (`TriggerCmdReqQueue`), `FSFile#0x0802` (`Read`), `FSFile#0x0808` (`Close`) e `dsp::DSP#0x000C` (`ConvertProcessAddressFromDspDram`).
   - Confirmado no `albw-run.log`: todos os caminhos quentes de `svc 0x32` zerados (maior IPC restante é apenas inicialização pontual com 64 chamadas).
 
+- [x] **M4 — Desacoplamento do Emulador:**
+  - Removidos `replay.rs`, `cro/`, `cheats.rs`, `enhancements.rs`/`txt`, `library.rs`, `report.rs` e toda a UI de biblioteca multi-jogo / emulação dos menus.
+  - `albw-native` inicia direto no jogo com runtime enxuto e 0 warnings.
+
 ### Em andamento / Pendente imediato
-- [ ] **M4 (próximo):** Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO, separar o interpretador `zakuro-cpu` do `System::cpu` e desacoplar o backend Vulkan (`zakuro-gpu`).
+- [ ] **M5 (próximo):** Recursos Nativos de PC — trocar/modernizar o menu (ex.: Dear ImGui ou overlay próprio do ALBW), **60 FPS+**, câmera livre / controles de PC e melhorias visuais.
 
 ---
 
@@ -83,5 +87,5 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 | **M1** | Poda de `zakuro` & `zakuro-core` | Mapear `srv`/`svc` usados pelo ALBW; remover serviços ociosos (`cam`, `nfc`, `uds`, `dlp`, `ir`, `cecd`, etc.), UI de multiplayer/cheats e recompilador em runtime | `[x]` Boot direto no ALBW com runtime enxuto e sem regressão |
 | **M2** | Core Nativo & Zero Fallbacks | Expandir `overrides/` (`sead`, `mem*`, `math`) e auditar `INTERPRET(...)` reais | `[x]` 100% do código executado coberto por C recompilado/nativo |
 | **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[x]` Caminhos quentes de `gsp`, `fs`, `dsp` e `hid` sem IPC emulado |
-| **M4** | Kernel & GPU Desacoplados | Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO e desacoplar renderização Vulkan (`zakuro-gpu`) do modelo de emulador | `[ ]` Executável nativo independente da arquitetura do emulador |
+| **M4** | Desacoplamento do Emulador | Remover `replay`, `cro`, `cheats`, `enhancements`, `library`, `report` e menus de emulador para boot direto | `[x]` Boot direto exclusivo do ALBW sem biblioteca/UI de emulador |
 | **M5** | Recursos Nativos de PC | Menu próprio do ALBW, 60 FPS+, câmera livre, widescreen/resolução nativa e melhorias de qualidade de vida | `[ ]` Experiência nativa de PC completa |

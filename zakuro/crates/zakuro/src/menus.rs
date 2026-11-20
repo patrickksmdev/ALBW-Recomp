@@ -1,14 +1,11 @@
-//! the library, the menu over a game and the settings, drawn w/ egui
+//! the menu over the game and the settings, drawn w/ egui
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver};
+use std::path::PathBuf;
 
-use egui::{Align, Color32, Layout, RichText, Vec2};
+use egui::{RichText, Vec2};
 use winit::keyboard::KeyCode;
 use zakuro_core::services::keyboard::Request;
 
-use crate::library::{Library, ICON_SIZE};
 use crate::gamepad::button_name;
 use crate::settings::{
     game_key, Filter, GameSettings, Keys, Language, Orientation, PadButtons, Renderer, Screens, Settings, Stereo3d, TopShape,
@@ -61,221 +58,12 @@ pub struct Menus {
     pub report: Option<(String, String)>,
     /// what's being typed into the game's keyboard, and what it asked for
     typing: Option<(Request, String)>,
-    icons: HashMap<PathBuf, egui::TextureHandle>,
-    background: Background,
-}
-
-/// the picture behind the library, decoded away from the UI
-#[derive(Default)]
-struct Background {
-    /// the file shown or being read
-    path: Option<PathBuf>,
-    texture: Option<egui::TextureHandle>,
-    loading: Option<Receiver<Result<egui::ColorImage, String>>>,
-}
-
-/// the longest side a background gets kept at, bigger ones get scaled down
-const BACKGROUND_SIDE: u32 = 2560;
-
-impl Background {
-    /// the texture for path, starting to read it when it changed, none till it's ready or when there's no picture
-    fn get(&mut self, ctx: &egui::Context, path: Option<&Path>) -> Result<Option<&egui::TextureHandle>, String> {
-        if self.path.as_deref() != path {
-            self.path = path.map(Path::to_owned);
-            self.texture = None;
-            self.loading = path.map(|path| {
-                let (send, receive) = channel();
-                let path = path.to_owned();
-                std::thread::spawn(move || {
-                    let _ = send.send(decode(&path));
-                });
-                receive
-            });
-        }
-        if let Some(receive) = &self.loading {
-            match receive.try_recv() {
-                Ok(image) => {
-                    self.loading = None;
-                    self.texture = Some(ctx.load_texture("library background", image?, egui::TextureOptions::LINEAR));
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => ctx.request_repaint(),
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.loading = None,
-            }
-        }
-        Ok(self.texture.as_ref())
-    }
-}
-
-fn decode(path: &Path) -> Result<egui::ColorImage, String> {
-    let image = image::open(path).map_err(|error| format!("could not open {}, {error}", path.display()))?;
-    let image = if image.width().max(image.height()) > BACKGROUND_SIDE {
-        image.resize(BACKGROUND_SIDE, BACKGROUND_SIDE, image::imageops::FilterType::Triangle)
-    } else {
-        image
-    };
-    let rgba = image.to_rgba8();
-    Ok(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()))
-}
-
-/// the part of a picture that fills an area w/o stretching it, cutting off what sticks out on either side
-fn cover(area: Vec2, picture: [usize; 2]) -> egui::Rect {
-    let (width, height) = (picture[0].max(1) as f32, picture[1].max(1) as f32);
-    let area_ratio = area.x / area.y.max(1.0);
-    let picture_ratio = width / height;
-    if area_ratio > picture_ratio {
-        // wider area, the picture's top and bottom are cut
-        let shown = picture_ratio / area_ratio;
-        egui::Rect::from_min_max(egui::pos2(0.0, (1.0 - shown) / 2.0), egui::pos2(1.0, (1.0 + shown) / 2.0))
-    } else {
-        let shown = area_ratio / picture_ratio;
-        egui::Rect::from_min_max(egui::pos2((1.0 - shown) / 2.0, 0.0), egui::pos2((1.0 + shown) / 2.0, 1.0))
-    }
 }
 
 impl Menus {
     /// is something open that stops the game while it is
     pub fn over_game(&self) -> bool {
         self.menu_open || self.settings_open || self.game_settings.is_some()
-    }
-
-    /// the library, filling the window
-    pub fn library(&mut self, ui: &mut egui::Ui, library: &Library, settings: &Settings) -> Vec<Action> {
-        let mut actions = Vec::new();
-        if library.changed {
-            self.icons.clear();
-        }
-        egui::Panel::top("library bar").show(ui, |ui| {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.heading("Zakuro");
-                ui.separator();
-                match &settings.games {
-                    Some(folder) => ui.label(folder.display().to_string()),
-                    None => ui.label(RichText::new("no games folder yet").weak()),
-                };
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("Settings").clicked() {
-                        self.settings_open = true;
-                    }
-                    if ui.add_enabled(settings.games.is_some(), egui::Button::new("Refresh")).clicked() {
-                        actions.push(Action::Rescan);
-                    }
-                    if ui.button("Choose folder…").clicked() {
-                        actions.push(Action::ChooseFolder);
-                    }
-                });
-            });
-            ui.add_space(6.0);
-        });
-        let background = match self.background.get(ui.ctx(), settings.background.as_deref()) {
-            Ok(texture) => texture.map(|texture| (texture.id(), texture.size())),
-            Err(error) => {
-                self.message = Some(error);
-                None
-            }
-        };
-        egui::CentralPanel::default().show(ui, |ui| {
-            if let Some((texture, size)) = background {
-                let area = ui.clip_rect();
-                let alpha = (settings.background_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
-                ui.painter().image(texture, area, cover(area.size(), size), Color32::from_white_alpha(alpha));
-            }
-            if settings.games.is_none() {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(ui.available_height() / 3.0);
-                    ui.label("Pick the folder your games are in to see them here.");
-                    if ui.button("Choose folder…").clicked() {
-                        actions.push(Action::ChooseFolder);
-                    }
-                });
-                return;
-            }
-            if library.is_scanning() {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Looking for games…");
-                });
-                return;
-            }
-            if library.games.is_empty() {
-                ui.label("No .3ds, .cci, .cxi or .cia files in that folder.");
-                return;
-            }
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for game in &library.games {
-                    // over a picture, each game gets a backing to keep it readable
-                    let mut frame = egui::Frame::group(ui.style());
-                    if background.is_some() {
-                        frame = frame.fill(ui.visuals().panel_fill.gamma_multiply(0.85));
-                    }
-                    frame.show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.horizontal(|ui| {
-                            let icon = game.icon.as_ref().map(|pixels| {
-                                self.icons.entry(game.path.clone()).or_insert_with(|| {
-                                    let image = egui::ColorImage::from_rgba_unmultiplied([ICON_SIZE, ICON_SIZE], pixels);
-                                    ui.ctx().load_texture(game.path.display().to_string(), image, egui::TextureOptions::LINEAR)
-                                })
-                            });
-                            match icon {
-                                Some(texture) => {
-                                    ui.add(egui::Image::new(&*texture).fit_to_exact_size(Vec2::splat(ICON_SIZE as f32)));
-                                }
-                                None => {
-                                    ui.allocate_space(Vec2::splat(ICON_SIZE as f32));
-                                }
-                            }
-                            ui.vertical(|ui| {
-                                ui.label(RichText::new(&game.name).strong().size(16.0));
-                                if !game.publisher.is_empty() {
-                                    ui.label(&game.publisher);
-                                }
-                                if let Some(problem) = &game.problem {
-                                    ui.label(RichText::new(problem).color(Color32::from_rgb(230, 160, 80)));
-                                    return;
-                                }
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(format!("{:016X}", game.program_id)).weak().monospace());
-                                    if game.outdated {
-                                        ui.label(RichText::new("recompiled by an older version").color(Color32::from_rgb(220, 180, 100)));
-                                    } else if game.recompiled {
-                                        ui.label(RichText::new("recompiled").color(Color32::from_rgb(110, 200, 120)));
-                                    }
-                                    if game.modded {
-                                        ui.label(RichText::new("mods").color(Color32::from_rgb(120, 170, 230)));
-                                    }
-                                    if settings.has_own(game.program_id) {
-                                        ui.label(RichText::new("own settings").color(Color32::from_rgb(120, 170, 230)));
-                                    }
-                                    if let Some(update) = &game.update {
-                                        let version = zakuro_fs::version_name(update.version);
-                                        ui.label(RichText::new(format!("update {version}")).color(Color32::from_rgb(220, 180, 100)));
-                                    }
-                                    if !game.dlc.is_empty() {
-                                        ui.label(RichText::new("DLC").color(Color32::from_rgb(220, 180, 100)));
-                                    }
-                                });
-                            });
-                            if game.problem.is_some() {
-                                return;
-                            }
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button(RichText::new("▶ Play").size(15.0)).clicked() {
-                                    actions.push(Action::Play(game.path.clone()));
-                                }
-                                if ui.button("Mods").on_hover_text("Open the game's mods folder. Files put in its romfs folder replace the game's, the way Luma3DS and Citra take mods, and a texture pack made for Citra or Azahar goes in its textures folder.").clicked() {
-                                    actions.push(Action::Mods(game.program_id));
-                                }
-                                if ui.button("Settings").on_hover_text("What this game has of its own, over the general settings.").clicked() {
-                                    self.game_settings = Some((game.program_id, game.name.clone()));
-                                }
-                            });
-                        });
-                    });
-                }
-            });
-        });
-        actions
     }
 
     /// what goes over a running game, the menu when it's open and the frame rate when asked for
