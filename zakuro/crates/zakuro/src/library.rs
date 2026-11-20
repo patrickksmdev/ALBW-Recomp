@@ -3,8 +3,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 
-use crate::recompile::Wanted;
-
 /// file endings of games Zakuro opens
 const GAME_FILES: [&str; 4] = ["3ds", "cci", "cxi", "cia"];
 /// the icon's side, in pixels
@@ -31,13 +29,6 @@ pub struct Game {
     pub dlc: Vec<Addon>,
     /// its Download Play child, decrypted, it sends guests that
     pub dlp_child: Option<Addon>,
-}
-
-impl Game {
-    /// the game as a recompile wants it
-    pub fn wanted(&self) -> Wanted {
-        Wanted { program_id: self.program_id, path: self.path.clone() }
-    }
 }
 
 /// an update or DLC in the folder, it goes w/ the game of its id

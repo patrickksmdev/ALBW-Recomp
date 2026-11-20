@@ -10,10 +10,8 @@ mod library;
 mod menus;
 mod present;
 mod pro_controller;
-mod recompile;
 mod report;
 mod settings;
-mod zig;
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -33,7 +31,6 @@ use input::Keyboard;
 use library::Library;
 use menus::{Action, Menus};
 use present::Backend;
-use recompile::{Job, Stage, Toolchain, Wanted};
 use settings::{Renderer, Screens, Settings};
 
 pub use zakuro_core::memory::Memory;
@@ -111,9 +108,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
             menus.slot = 1;
             menus
         },
-        jobs: Vec::new(),
-        waiting: Vec::new(),
-        download_compiler: false,
         gui: None,
         backend: None,
         window: None,
@@ -377,11 +371,6 @@ struct App {
     game: Option<Running>,
     library: Library,
     menus: Menus,
-    jobs: Vec<Job>,
-    /// the games waiting for their turn to recompile, the next one first
-    waiting: Vec<Wanted>,
-    /// the player said yes to downloading a compiler for the next recompile
-    download_compiler: bool,
     gui: Option<Gui>,
     // backend must be declared (and so dropped) b4 window, Rust drops struct fields in declaration order,
     // and the GL surface's Drop calls eglDestroySurface,
@@ -956,105 +945,6 @@ impl App {
         winit::dpi::LogicalSize::new(width * self.scale, height * self.scale).into()
     }
 
-    /// what to recompile w/, the computer's C compiler, or the Zig Zakuro downloaded,
-    /// or else Zig downloaded first when the player said yes to it
-    /// w/ none of those there's none, it asks whether to download Zig for games, or says what's missing
-    fn toolchain(&mut self, games: &[Wanted]) -> Option<Toolchain> {
-        let tools = zig::tools_dir(self.data_dir.as_deref());
-        let error = match recomp3ds::compile::check(None) {
-            Ok(compiler) => return Some(Toolchain::Ready(compiler)),
-            Err(error) => error,
-        };
-        if let Some(compiler) = tools.as_deref().and_then(zig::installed) {
-            return Some(Toolchain::Ready(compiler));
-        }
-        match tools {
-            Some(tools) if self.download_compiler && zig::download_size().is_some() && zig::can_download() => return Some(Toolchain::Download(tools)),
-            Some(_) if zig::download_size().is_some() && zig::can_download() => self.menus.compiler_offer = Some(games.to_vec()),
-            Some(_) if zig::download_size().is_some() => {
-                self.menus.message = Some(format!("Recompiling needs a C compiler, gcc or clang, or curl or wget for Zakuro to download one: {error}."));
-            }
-            _ => self.menus.message = Some(format!("Recompiling needs a C compiler: {error}.")),
-        }
-        None
-    }
-
-    /// puts games in line to recompile after the ones already there, each getting its turn once the one b4 it is done
-    /// download says the player agreed to download a compiler if there's none
-    fn recompile(&mut self, games: Vec<Wanted>, download: bool) {
-        self.download_compiler = download;
-        if self.toolchain(&games).is_none() {
-            return;
-        }
-        for game in games {
-            let running = self.jobs.iter().any(|job| job.program_id == game.program_id && !job.stage().finished());
-            if !running && !self.waiting.iter().any(|waiting| waiting.program_id == game.program_id) {
-                self.waiting.push(game);
-            }
-        }
-        self.next_recompile();
-    }
-
-    /// starts the game next in line, when none is recompiling
-    fn next_recompile(&mut self) {
-        if self.waiting.is_empty() || self.jobs.iter().any(|job| !job.stage().finished()) {
-            return;
-        }
-        // a compiler can have stopped being there (its download failed or got cancelled), and it asks again for the ones left
-        let Some(toolchain) = self.toolchain(&self.waiting.clone()) else {
-            self.waiting.clear();
-            return;
-        };
-        self.download_compiler = false;
-        let wanted = self.waiting.remove(0);
-        self.jobs.retain(|job| job.program_id != wanted.program_id);
-        // a scan may have taken it out of the library meanwhile
-        if let Some(game) = self.library.games.iter().find(|game| game.path == wanted.path) {
-            let update = game.update.as_ref().map(|update| update.path.as_path());
-            self.jobs.push(Job::start(&game.path, update, game.program_id, &game.name, self.data_dir.as_deref(), toolchain));
-        }
-    }
-
-    /// tells about recompiles as they finish, and starts the next
-    fn poll_jobs(&mut self) {
-        let mut finished = Vec::new();
-        for job in &mut self.jobs {
-            if !job.announced && job.stage().finished() {
-                job.announced = true;
-                finished.push((job.program_id, job.name.clone(), job.stage()));
-            }
-        }
-        for (program_id, name, stage) in finished {
-            match stage {
-                Stage::Done => {
-                    self.library.recompiled(program_id);
-                    // a game told to run on the interpreter stays on it
-                    let playing = self.game.as_ref().is_some_and(|game| {
-                        game.system.config.find_recompiled && game.system.title.as_ref().is_some_and(|title| title.program_id() == program_id)
-                    });
-                    let installed = zakuro_core::recompiled::installed(program_id);
-                    if let (true, Some(game), Some(path)) = (playing, self.game.as_mut(), installed) {
-                        // from here on the game runs on the new code, no reset needed
-                        match zakuro_core::loader::swap_recompiled(&mut game.system, &path) {
-                            Ok(()) => self.menus.message = Some(format!("{name} is recompiled, and it runs on the new code now.")),
-                            Err(error) => {
-                                log::warn!("could not switch {name} to its new code, {error}");
-                                self.menus.message = Some(format!("{name} is recompiled. Reset it from the menu, Esc, to run it on the new code."));
-                            }
-                        }
-                    }
-                }
-                // others can fail b4 anyone reads this, in a long line
-                Stage::Failed(error) if error != "cancelled" => {
-                    let failed = format!("Recompiling {name} failed, {error}");
-                    self.menus.message = Some(self.menus.message.take().map_or(failed.clone(), |earlier| format!("{earlier}\n\n{failed}")));
-                }
-                _ => {}
-            }
-        }
-        self.next_recompile();
-    }
-
     fn act(&mut self, action: Action, event_loop: &ActiveEventLoop) {
         match action {
             Action::Play(path) => {
@@ -1062,8 +952,6 @@ impl App {
                     self.menus.message = Some(error);
                 }
             }
-            Action::Recompile(games) => self.recompile(games, false),
-            Action::DownloadCompiler(games) => self.recompile(games, true),
             Action::Mods(program_id) => {
                 if let Some(data_dir) = &self.data_dir {
                     let folder = zakuro_core::mods::dir(data_dir, program_id);
@@ -1074,13 +962,6 @@ impl App {
                     }
                 }
             }
-            Action::CancelRecompile(program_id) => {
-                self.waiting.retain(|waiting| waiting.program_id != program_id);
-                for job in self.jobs.iter().filter(|job| job.program_id == program_id) {
-                    job.cancel();
-                }
-            }
-            Action::CancelWaiting => self.waiting.clear(),
             Action::ChooseFolder => {
                 if let Some(folder) = rfd::FileDialog::new().set_title("Where your games are").pick_folder() {
                     self.settings.games = Some(folder.clone());
@@ -1144,7 +1025,6 @@ impl App {
             self.next_frame = now;
         }
         self.library.poll();
-        self.poll_jobs();
         self.poll_gamepads();
 
         // a game waiting on its keyboard waits for the user, not running
@@ -1363,17 +1243,17 @@ impl App {
         let fast = self.fast_forwarding;
         let keyboard = self.game.as_ref().and_then(|game| game.system.keyboard_request().cloned());
         let corner = self.overlay_corner.clone().filter(|_| game.is_some());
-        let (menus, library, settings, jobs, waiting) = (&mut self.menus, &self.library, &mut self.settings, &self.jobs, &self.waiting);
+        let (menus, library, settings) = (&mut self.menus, &self.library, &mut self.settings);
         let mut actions = Vec::new();
         let overlay = gui.frame(window, |ui| {
             match &game {
                 Some((name, fps, recompiled)) => {
-                    actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, jobs, waiting.len(), saved.as_deref()));
+                    actions.extend(menus.game(ui, name, program_id, show_fps.then_some(*fps), *recompiled, fast, saved.as_deref()));
                     if let Some(text) = &corner {
                         menus::corner(ui.ctx(), text);
                     }
                 }
-                None => actions.extend(menus.library(ui, library, settings, jobs, waiting)),
+                None => actions.extend(menus.library(ui, library, settings)),
             }
             let own = program_id.is_some_and(|id| settings.has_own(id));
             actions.extend(menus.settings(ui.ctx(), settings, own));
@@ -1381,7 +1261,6 @@ impl App {
             if let Some(request) = &keyboard {
                 actions.extend(menus.keyboard(ui.ctx(), request));
             }
-            actions.extend(menus.compiler_offer(ui.ctx()));
             menus.message(ui.ctx());
         });
         self.library.changed = false;
