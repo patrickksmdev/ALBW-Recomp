@@ -20,9 +20,8 @@ albw-port/code/
 target/
 **/target/
 
-# Upstream tools / reference repos (manage via forks/submodules when ready)
+# Upstream tools / reference repos (not part of the game runtime)
 3dsrecomp/
-zakuro/
 albw-decomp-ai/
 
 # Editor / OS junk

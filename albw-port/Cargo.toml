@@ -7,7 +7,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-zakuro = { path = "/emulation/albw-recomp/zakuro/crates/zakuro" }
+zakuro = { path = "/games/albw-recomp/zakuro/crates/zakuro" }
 
 # a project of its own, whatever directory it sits in
 [workspace]
