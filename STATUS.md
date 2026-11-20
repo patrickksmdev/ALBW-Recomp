@@ -63,7 +63,7 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 
 ### Em andamento / Pendente imediato
 - [ ] **M2 (em andamento):** Expandir `overrides/` (12 overrides core: `core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2) e zerar os últimos `0,10%` de fallback para `zakuro-cpu` (`0x0016AC14..0x0016AC34`, `0x00115E9C`).
-- [ ] **M3 (em andamento):** Iniciado [overrides/host_io.c](overrides/host_io.c) (2 overrides: `gsp::Gpu#0x0008` e `dsp::DSP#0x0013` `FlushDataCache` como no-ops nativos sem `svc 0x32`). Próximo: ponte direta de `fs` e `dsp`/`gsp`.
+- [ ] **M3 (em andamento):** Ponte direta [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (4 overrides ativos sem `svc 0x32`: `gsp::Gpu#0x0008`, `dsp::DSP#0x0013` `FlushDataCache`, `gsp::Gpu#0x000C` `TriggerCmdReqQueue` e `FSFile#0x0802` `Read`). Próximo: abertura/fechamento de `fs` e áudio `dsp`.
 
 ---
 

@@ -1138,7 +1138,7 @@ fn read_delay(length: u32) -> u64 {
     (u64::from(length) * 94 + 582_778).max(663_124)
 }
 
-fn read_file(system: &mut System, file_id: u32, offset: u64, size: u32, dest: u32) -> u32 {
+pub(crate) fn read_file(system: &mut System, file_id: u32, offset: u64, size: u32, dest: u32) -> u32 {
     let Some(file) = system.services.fs.files.get(&file_id).cloned() else {
         return 0;
     };

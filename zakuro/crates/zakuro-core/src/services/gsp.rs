@@ -370,7 +370,7 @@ pub fn apply_framebuffer_updates(system: &mut System) {
 /// the console's GPU takes its time, which paces a title that never waits for a refresh, ours finishes at once
 /// Monster Hunter 3 Ultimate drew twenty pictures per refresh that nobody saw lol
 /// a title that waits for a refresh sets one picture for each and is never held
-fn outdrawn(system: &mut System) -> bool {
+pub(crate) fn outdrawn(system: &mut System) -> bool {
     let base = system.services.gsp.shared_memory_address;
     if base == 0 || system.services.gsp.held {
         return system.services.gsp.held;
@@ -492,7 +492,7 @@ fn write_hw_regs(system: &mut System, offset: u32, size: u32, source: u32, mask:
 }
 
 /// pulls every queued GX command off the ring and runs it
-fn process_command_queue(system: &mut System) {
+pub(crate) fn process_command_queue(system: &mut System) {
     let base = system.services.gsp.shared_memory_address;
     if base == 0 {
         return;

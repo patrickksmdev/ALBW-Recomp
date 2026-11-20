@@ -203,6 +203,13 @@ unsafe fn machine<'a>(ctx: *mut Context) -> &'a mut Machine<'a> {
     unsafe { &mut *((*ctx).user as *mut Machine) }
 }
 
+/// # Safety
+///
+/// ctx must be a context run set up, its user field pointing at a live Machine
+pub(crate) unsafe fn system_from_ctx<'a>(ctx: *mut Context) -> &'a mut System {
+    unsafe { &mut *machine(ctx).system }
+}
+
 /// the memory the code runs on
 ///
 /// # Safety
