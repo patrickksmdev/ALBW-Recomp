@@ -44,7 +44,8 @@ case "$cmd" in
             echo "Erro: ROM não encontrada em: $rom" >&2
             exit 1
         fi
-        exec "$PORT_BIN" "$rom"
+        LOG_FILE="$ROOT_DIR/albw-run.log"
+        "$PORT_BIN" "$rom" 2>&1 | tee "$LOG_FILE"
         ;;
     *)
         usage

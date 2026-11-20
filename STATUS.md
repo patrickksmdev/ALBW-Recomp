@@ -58,7 +58,10 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
     - [overrides/core_mem.c](overrides/core_mem.c) (1 função): `__aeabi_memclr4`.
 
 ### Em andamento / Pendente imediato
-- [ ] **M1 (início):** Mapear quais serviços 3DS (`srv`) e `svc` o ALBW realmente utiliza em runtime.
+- [x] **M1 (mapeamento inicial):** `albw-run.log` capturou os serviços e SVCs usados até a tela inicial:
+  - **9 serviços (`srv`):** `APT:U`, `cecd:u`, `cfg:u`, `dsp::DSP`, `fs:USER`, `gsp::Gpu`, `hid:USER`, `ndm:u`, `ptm:u` (0 IPCs não implementados).
+  - **23 SVCs:** `0x01`, `0x08`, `0x09`, `0x0A`, `0x0B`, `0x13`, `0x14`, `0x17`, `0x18`, `0x19`, `0x1F`, `0x21`, `0x22`, `0x23`, `0x24`, `0x25`, `0x27`, `0x28`, `0x2D`, `0x32`, `0x37`, `0x38`, `0x3A`.
+- [ ] **M1 (poda):** Remover serviços ociosos (`cam`, `uds`, `dlp`, `ir`, `ir_rst`, `y2r`, `mic`, `boss`, `frd`, `nfc`, `ldr_ro`) e UI/menus multi-jogo de `zakuro`/`zakuro-core`.
 
 ---
 

@@ -159,6 +159,7 @@ pub struct System {
     /// everything the title wrote w/ svcOutputDebugString
     pub debug_output: String,
     pub unimplemented_svcs: BTreeSet<u32>,
+    pub svcs_seen: BTreeSet<u32>,
     pub services_seen: BTreeSet<String>,
     pub lcd_force_black: bool,
     /// the scaled picture each screen had at the last present, it goes up at the next once the GPU had a frame to draw it
@@ -262,6 +263,7 @@ impl System {
             broke: false,
             debug_output: String::new(),
             unimplemented_svcs: BTreeSet::new(),
+            svcs_seen: BTreeSet::new(),
             services_seen: BTreeSet::new(),
             lcd_force_black: false,
             showing: [None, None, None],
@@ -1020,8 +1022,6 @@ impl System {
             services::dsp::signal_semaphore(self);
         }
         // devices reporting at a title set rate, this is fine enough for them
-        services::ir_rst::tick(self);
-        services::ir::tick(self);
         services::cam::tick(self);
         services::mic::tick(self);
         services::uds::tick(self);
@@ -1494,6 +1494,25 @@ impl Drop for System {
     fn drop(&mut self) {
         if let Some(hints) = &mut self.hints {
             hints.save();
+        }
+        if !self.services_seen.is_empty() || !self.svcs_seen.is_empty() {
+            let svcs: Vec<String> = self.svcs_seen.iter().map(|n| format!("0x{n:02X}")).collect();
+            eprintln!(
+                "[albw-profile] services_seen ({}): {:?}",
+                self.services_seen.len(),
+                self.services_seen
+            );
+            eprintln!(
+                "[albw-profile] svcs_seen ({}): [{}]",
+                svcs.len(),
+                svcs.join(", ")
+            );
+            if !self.services.unimplemented.is_empty() {
+                eprintln!(
+                    "[albw-profile] unimplemented IPC: {:?}",
+                    self.services.unimplemented
+                );
+            }
         }
     }
 }

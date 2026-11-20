@@ -1,7 +1,6 @@
 //! high level service emulation
 
 pub mod apt;
-pub mod boss;
 pub mod cam;
 pub mod cecd;
 pub mod err;
@@ -11,25 +10,19 @@ pub mod dsp;
 pub mod dsp_aac;
 pub mod dsp_mixer;
 pub mod dsp_voices;
-pub mod frd;
 pub mod fs;
 pub mod glyphs;
 pub mod gsp;
 pub mod hid;
-pub mod ir;
-pub mod ir_rst;
 pub mod keyboard;
-pub mod ldr_ro;
 pub mod mic;
 pub mod mii_selector;
 pub mod misc;
-pub mod nfc;
 pub mod shared_font;
 pub mod host_archive;
 pub mod srv;
 pub mod system_archives;
 pub mod uds;
-pub mod y2r;
 
 use std::collections::BTreeMap;
 
@@ -71,12 +64,7 @@ pub struct ServiceState {
     pub hid: hid::HidState,
     pub fs: fs::FsState,
     pub dsp: dsp::DspState,
-    pub ir: ir::IrState,
-    pub ir_rst: ir_rst::IrRstState,
-    pub y2r: y2r::Y2rState,
-    pub nfc: nfc::NfcState,
     pub cecd: cecd::CecdState,
-    pub boss: boss::BossState,
     pub cam: cam::CamState,
     pub mic: mic::MicState,
     pub uds: uds::UdsState,
@@ -111,14 +99,7 @@ pub fn handle_request(system: &mut System, target: Target) {
         "cfg:u" | "cfg:s" | "cfg:i" => cfg::handle(system, &buffer, header),
         "err:f" => err::handle(system, &buffer, header),
         "dsp::DSP" => dsp::handle(system, &buffer, header),
-        "ldr:ro" => ldr_ro::handle(system, &buffer, header),
-        "ir:USER" => ir::handle(system, &buffer, header),
-        "ir:rst" => ir_rst::handle(system, &buffer, header),
-        "y2r:u" => y2r::handle(system, &buffer, header),
-        "frd:u" | "frd:a" => frd::handle(system, &buffer, header),
-        "nfc:u" | "nfc:m" => nfc::handle(system, &buffer, header),
         "cecd:u" | "cecd:s" => cecd::handle(system, &buffer, header),
-        "boss:U" | "boss:P" => boss::handle(system, &buffer, header),
         "cam:u" | "cam:s" => cam::handle(system, &buffer, header),
         "mic:u" => mic::handle(system, &buffer, header),
         "nwm::UDS" => uds::handle(system, &buffer, header),

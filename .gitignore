@@ -28,3 +28,4 @@ albw-decomp-ai/
 .DS_Store
 *.swp
 *~
+*.log

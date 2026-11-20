@@ -39,6 +39,7 @@ pub fn in_place(number: u32) -> bool {
 
 /// runs one supervisor call
 pub fn dispatch(system: &mut System, number: u32) {
+    system.svcs_seen.insert(number);
     if log::log_enabled!(log::Level::Trace) {
         let thread = system
             .kernel
