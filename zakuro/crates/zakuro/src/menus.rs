@@ -16,6 +16,7 @@ use crate::settings::{
 
 /// what the user asked for
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum Action {
     Play(PathBuf),
     /// show the mods folder of the game w/ this program id
@@ -284,7 +285,7 @@ impl Menus {
         name: &str,
         program_id: Option<u64>,
         fps: Option<f32>,
-        recompiled: bool,
+        _recompiled: bool,
         fast: bool,
         saved: Option<&str>,
     ) -> Vec<Action> {
@@ -332,7 +333,6 @@ impl Menus {
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(&ctx, |ui| {
                 ui.label(RichText::new(name).strong());
-                ui.label(RichText::new(if recompiled { "running its recompiled code" } else { "interpreted" }).weak());
                 ui.add_space(6.0);
                 let wide = |ui: &mut egui::Ui, text: &str| ui.add_sized([200.0, 28.0], egui::Button::new(text)).clicked();
                 if wide(ui, "Resume") {
@@ -368,12 +368,6 @@ impl Menus {
                 if let Some(program_id) = program_id.filter(|_| wide(ui, "Settings for this game")) {
                     self.game_settings = Some((program_id, name.to_owned()));
                 }
-                if wide(ui, "Copy info for a report") {
-                    actions.push(Action::CopyReport);
-                }
-                if wide(ui, "Back to the library") {
-                    actions.push(Action::Library);
-                }
                 if wide(ui, "Quit") {
                     actions.push(Action::Quit);
                 }
@@ -398,18 +392,6 @@ impl Menus {
                 if own {
                     ui.label(RichText::new("This game has settings of its own, which go over these. They are in Settings for this game, in the menu.").weak());
                 }
-                ui.heading("Games");
-                ui.horizontal(|ui| {
-                    match &settings.games {
-                        Some(folder) => ui.label(folder.display().to_string()),
-                        None => ui.label(RichText::new("none").weak()),
-                    };
-                    if ui.button("Choose…").clicked() {
-                        actions.push(Action::ChooseFolder);
-                    }
-                });
-
-                ui.separator();
                 ui.heading("Graphics");
                 egui::ComboBox::from_label("Presented with")
                     .selected_text(match settings.renderer {
@@ -442,13 +424,7 @@ impl Menus {
                 ui.label(
                     RichText::new("F9 switches them while playing, F10 between the top and the bottom screen alone.").weak(),
                 );
-                ui.label(RichText::new("The presenter changes the next time Zakuro starts, the 3D with the next game.").weak());
-
-                ui.separator();
-                ui.heading("Emulation");
-                language(ui, &mut settings.language);
-                code(ui, &mut settings.recompiled);
-                ui.label(RichText::new("It changes with the next game started, or Reset.").weak());
+                ui.label(RichText::new("Renderer changes apply on restart.").weak());
 
                 ui.separator();
                 ui.heading("Sound");
@@ -456,27 +432,9 @@ impl Menus {
                 ui.checkbox(&mut settings.mute, "Mute");
 
                 ui.separator();
-                ui.heading("Interface");
+                ui.heading("Interface & System");
                 ui.checkbox(&mut settings.show_fps, "Show the frame rate");
-                ui.horizontal(|ui| {
-                    ui.label("Library background");
-                    match &settings.background {
-                        Some(path) => ui.label(path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()),
-                        None => ui.label(RichText::new("none").weak()),
-                    };
-                    if ui.button("Choose…").clicked() {
-                        actions.push(Action::ChooseBackground);
-                    }
-                    if settings.background.is_some() && ui.button("Remove").clicked() {
-                        settings.background = None;
-                    }
-                });
-                ui.add_enabled(
-                    settings.background.is_some(),
-                    egui::Slider::new(&mut settings.background_opacity, 0.0..=1.0)
-                        .text("Opacity")
-                        .custom_formatter(|value, _| format!("{:.0}%", value * 100.0)),
-                );
+                language(ui, &mut settings.language);
 
 
                 ui.separator();
