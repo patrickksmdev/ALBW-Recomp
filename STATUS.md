@@ -73,6 +73,6 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 |---|---|---|---|
 | **M0** | Fundação & Monorepo | `3dsrecomp`, `albw-port`, `build.sh`, monorepo `zakuro/`, primeiros overrides | `[x]` Jogo compilando e rodando via `./build.sh run` |
 | **M1** | Poda de `zakuro` & `zakuro-core` | Mapear `srv`/`svc` usados pelo ALBW; remover serviços ociosos (`cam`, `nfc`, `uds`, `dlp`, `ir`, `cecd`, etc.), UI de multiplayer/cheats e recompilador em runtime | `[x]` Boot direto no ALBW com runtime enxuto e sem regressão |
-| **M2** | Core Nativo & Zero `zakuro-cpu` | Expandir `overrides/` (matemática `sead`/VFP, `mem*`/`str*`, containers) com base em `albw-decomp-ai`; auditar `INTERPRET(...)` reais | `[ ]` Execução 100% nativa sem fallback para `zakuro-cpu` |
+| **M2** | Core Nativo & Zero Fallbacks | Expandir `overrides/` (`sead`, `mem*`, `math`) e auditar `INTERPRET(...)` reais | `[x]` 100% do código executado coberto por C recompilado/nativo |
 | **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[ ]` Input, arquivos e áudio sem camada HLE de serviço 3DS |
 | **M4** | Kernel & GPU Desacoplados | Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO e desacoplar renderização Vulkan (`zakuro-gpu`) do modelo de emulador | `[ ]` Executável nativo independente da arquitetura do emulador |
