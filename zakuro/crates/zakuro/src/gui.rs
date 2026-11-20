@@ -16,6 +16,7 @@ impl Gui {
     pub fn new(window: &Window) -> Gui {
         let ctx = egui::Context::default();
         ctx.set_fonts(fonts(system_fonts()));
+        apply_native_theme(&ctx);
         let state = egui_winit::State::new(
             ctx.clone(),
             ViewportId::ROOT,
@@ -96,6 +97,41 @@ impl Gui {
         let free = std::mem::take(&mut output.textures_delta.free).into_iter().map(texture).collect();
         Overlay { textures, meshes, free }
     }
+}
+
+fn apply_native_theme(ctx: &egui::Context) {
+    use egui::{Color32, CornerRadius, Stroke};
+    ctx.set_theme(egui::Theme::Dark);
+    let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.window_margin = egui::Margin::same(14);
+
+    let bg_dark = Color32::from_rgba_unmultiplied(16, 18, 24, 242);
+    let bg_widget = Color32::from_rgb(28, 32, 42);
+    let bg_hover = Color32::from_rgb(42, 48, 62);
+    let gold = Color32::from_rgb(218, 175, 58);
+    let border = Color32::from_rgb(58, 64, 80);
+
+    style.visuals.dark_mode = true;
+    style.visuals.window_fill = bg_dark;
+    style.visuals.panel_fill = bg_dark;
+    style.visuals.window_stroke = Stroke::new(1.0, border);
+    style.visuals.window_corner_radius = CornerRadius::same(6);
+    style.visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(218, 175, 58, 64);
+    style.visuals.selection.stroke = Stroke::new(1.0, gold);
+    style.visuals.widgets.noninteractive.bg_fill = bg_dark;
+    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, border);
+    style.visuals.widgets.inactive.bg_fill = bg_widget;
+    style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, border);
+    style.visuals.widgets.inactive.corner_radius = CornerRadius::same(4);
+    style.visuals.widgets.hovered.bg_fill = bg_hover;
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, gold);
+    style.visuals.widgets.hovered.corner_radius = CornerRadius::same(4);
+    style.visuals.widgets.active.bg_fill = gold;
+    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0, Color32::BLACK);
+    style.visuals.widgets.active.corner_radius = CornerRadius::same(4);
+    ctx.set_style_of(egui::Theme::Dark, style);
 }
 
 /// egui's two kinds of texture in one space of ids

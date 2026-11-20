@@ -37,10 +37,18 @@ pub enum Action {
     Keyboard(String, usize),
 }
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum MenuTab {
+    #[default]
+    Game,
+    PcExtras,
+}
+
 #[derive(Default)]
 pub struct Menus {
     /// the menu over a running game
     pub menu_open: bool,
+    pub tab: MenuTab,
     pub settings_open: bool,
     /// the game whose own settings are open, its id and its name
     pub game_settings: Option<(u64, String)>,
@@ -115,48 +123,68 @@ impl Menus {
         if !self.menu_open {
             return actions;
         }
-        egui::Window::new("Paused")
+        egui::Window::new("A Link Between Worlds — Native PC")
             .collapsible(false)
             .resizable(false)
+            .min_width(280.0)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(&ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.tab, MenuTab::Game, "Jogo");
+                    ui.selectable_value(&mut self.tab, MenuTab::PcExtras, "Extras PC");
+                });
+                ui.separator();
+
+                if self.tab == MenuTab::PcExtras {
+                    ui.label(RichText::new("Recursos Nativos de PC (M5)").strong());
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("• 60 FPS+ / Frame pacing livre (em breve)").weak());
+                    ui.label(RichText::new("• Câmera livre no analógico direito (em breve)").weak());
+                    ui.label(RichText::new("• Widescreen / FOV nativo (em breve)").weak());
+                    ui.add_space(8.0);
+                    if ui.add_sized([220.0, 28.0], egui::Button::new("Voltar ao Jogo")).clicked() {
+                        actions.push(Action::Resume);
+                    }
+                    return;
+                }
+
                 ui.label(RichText::new(name).strong());
-                ui.add_space(6.0);
-                let wide = |ui: &mut egui::Ui, text: &str| ui.add_sized([200.0, 28.0], egui::Button::new(text)).clicked();
-                if wide(ui, "Resume") {
+                ui.add_space(4.0);
+                let wide = |ui: &mut egui::Ui, text: &str| ui.add_sized([220.0, 28.0], egui::Button::new(text)).clicked();
+                if wide(ui, "Continuar") {
                     actions.push(Action::Resume);
                 }
-                if wide(ui, "Reset") {
+                if wide(ui, "Reiniciar") {
                     actions.push(Action::Reset);
                 }
-                if wide(ui, "Fullscreen") {
+                if wide(ui, "Tela Cheia") {
                     actions.push(Action::Fullscreen);
                 }
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut self.slot).range(1..=9).prefix("Slot "));
-                    ui.label(RichText::new(saved.unwrap_or("empty")).weak());
+                    ui.label(RichText::new(saved.unwrap_or("vazio")).weak());
                 });
                 ui.horizontal(|ui| {
-                    if ui.add_sized([98.0, 28.0], egui::Button::new("Save state")).on_hover_text("F5 saves to this slot while playing.").clicked() {
+                    if ui.add_sized([106.0, 28.0], egui::Button::new("Salvar")).on_hover_text("F5 salva neste slot durante o jogo.").clicked() {
                         actions.push(Action::SaveState);
                     }
                     if ui
-                        .add_enabled(saved.is_some(), egui::Button::new("Load state").min_size(Vec2::new(98.0, 28.0)))
-                        .on_hover_text("F8 loads this slot while playing.")
+                        .add_enabled(saved.is_some(), egui::Button::new("Carregar").min_size(Vec2::new(106.0, 28.0)))
+                        .on_hover_text("F8 carrega este slot durante o jogo.")
                         .clicked()
                     {
                         actions.push(Action::LoadState);
                     }
                 });
                 ui.add_space(4.0);
-                if wide(ui, "Settings") {
+                if wide(ui, "Configurações Gerais") {
                     self.settings_open = true;
                 }
-                if let Some(program_id) = program_id.filter(|_| wide(ui, "Settings for this game")) {
+                if let Some(program_id) = program_id.filter(|_| wide(ui, "Configurações do ALBW")) {
                     self.game_settings = Some((program_id, name.to_owned()));
                 }
-                if wide(ui, "Quit") {
+                if wide(ui, "Sair") {
                     actions.push(Action::Quit);
                 }
             });
