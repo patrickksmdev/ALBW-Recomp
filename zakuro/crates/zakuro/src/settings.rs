@@ -629,7 +629,7 @@ impl Default for Settings {
             console_id: 0,
             room_address: String::new(),
             room_name: String::new(),
-            room_port: zakuro_core::room::DEFAULT_PORT,
+            room_port: 24872,
         }
     }
 }

@@ -1,20 +1,16 @@
 //! the emulated console, cpu, memory, HLE kernel and services, GPU, and the loop driving them all
 
-pub mod camera;
 pub mod cheats;
 pub mod enhancements;
 pub mod cro;
-pub mod download_play;
 pub mod hints;
 pub mod idle;
 pub mod spin;
 pub mod kernel;
 pub mod loader;
 pub mod memory;
-pub mod microphone;
 pub mod mods;
 pub mod replay;
-pub mod room;
 pub mod recompiled;
 pub mod services;
 pub mod state;
@@ -168,12 +164,6 @@ pub struct System {
     pacing: Pacing,
     /// the dynamic module loader's state
     pub cro: cro::CroManager,
-    /// what the cameras see, from the frontend
-    pub camera: Option<Box<dyn camera::Camera>>,
-    /// what the mic hears, from the frontend
-    pub microphone: Option<Box<dyn microphone::Microphone>>,
-    /// the room local wireless goes thru, none w/ wireless off
-    pub room: Option<room::Link>,
     /// errors the title reported thru err:f, newest last
     pub fatal_errors: Vec<String>,
     /// undefined instrs we've seen, keeps the log readable
@@ -269,9 +259,6 @@ impl System {
             showing: [None, None, None],
             pacing: Pacing::default(),
             cro: cro::CroManager::default(),
-            camera: None,
-            microphone: None,
-            room: None,
             fatal_errors: Vec::new(),
             undefined_seen: BTreeMap::new(),
             prefetch_aborts: BTreeMap::new(),
@@ -1021,11 +1008,6 @@ impl System {
             services::dsp::advance(self);
             services::dsp::signal_semaphore(self);
         }
-        // devices reporting at a title set rate, this is fine enough for them
-        services::cam::tick(self);
-        services::mic::tick(self);
-        services::uds::tick(self);
-        services::dlp::tick(self);
     }
 
     /// stereo samples played since the last call, at AUDIO_SAMPLE_RATE

@@ -1,11 +1,9 @@
 //! high level service emulation
 
 pub mod apt;
-pub mod cam;
 pub mod cecd;
 pub mod err;
 pub mod cfg;
-pub mod dlp;
 pub mod dsp;
 pub mod dsp_aac;
 pub mod dsp_mixer;
@@ -15,14 +13,12 @@ pub mod glyphs;
 pub mod gsp;
 pub mod hid;
 pub mod keyboard;
-pub mod mic;
 pub mod mii_selector;
 pub mod misc;
 pub mod shared_font;
 pub mod host_archive;
 pub mod srv;
 pub mod system_archives;
-pub mod uds;
 
 use std::collections::BTreeMap;
 
@@ -65,10 +61,6 @@ pub struct ServiceState {
     pub fs: fs::FsState,
     pub dsp: dsp::DspState,
     pub cecd: cecd::CecdState,
-    pub cam: cam::CamState,
-    pub mic: mic::MicState,
-    pub uds: uds::UdsState,
-    pub dlp: dlp::DlpState,
     /// commands we logged as unimplemented, so the log stays readable and the diagnostics overlay can show what a
     /// title's actually asking for
     pub unimplemented: BTreeMap<(String, u16), u32>,
@@ -100,10 +92,6 @@ pub fn handle_request(system: &mut System, target: Target) {
         "err:f" => err::handle(system, &buffer, header),
         "dsp::DSP" => dsp::handle(system, &buffer, header),
         "cecd:u" | "cecd:s" => cecd::handle(system, &buffer, header),
-        "cam:u" | "cam:s" => cam::handle(system, &buffer, header),
-        "mic:u" => mic::handle(system, &buffer, header),
-        "nwm::UDS" => uds::handle(system, &buffer, header),
-        "dlp:SRVR" => dlp::handle(system, &buffer, header),
         _ => misc::handle(system, &buffer, header, &name),
     };
 

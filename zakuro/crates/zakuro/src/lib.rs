@@ -2,14 +2,12 @@
 //! plus the loop that drives the emulated console one frame at a time
 
 mod audio;
-mod camera;
 mod cli;
 mod gamepad;
 mod gui;
 mod input;
 mod library;
 mod menus;
-mod microphone;
 mod present;
 mod pro_controller;
 mod recompile;
@@ -36,7 +34,7 @@ use library::Library;
 use menus::{Action, Menus};
 use present::Backend;
 use recompile::{Job, Stage, Toolchain, Wanted};
-use settings::{CameraSource, MicrophoneSource, Renderer, Screens, Settings};
+use settings::{Renderer, Screens, Settings};
 
 pub use zakuro_core::memory::Memory;
 pub use zakuro_core::recompiled::Linked;
@@ -133,14 +131,6 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
         fast_forwarding: false,
         next_shown: Instant::now(),
         stop: false,
-        camera: None,
-        microphone: None,
-        blowing: std::sync::Arc::default(),
-        room_server: None,
-        room: None,
-        dlp_guest: None,
-        dlp_own: None,
-        wireless_reboot: None,
         maximized_before_full_screen: false,
         resize_after_full_screen: false,
     };
@@ -433,21 +423,6 @@ struct App {
     /// when fast forward shows its next frame, on a grid at the console's frame rate
     next_shown: Instant,
     stop: bool,
-    /// what the running game's cameras were given to see, to give them another only when the settings change it
-    camera: Option<(CameraSource, Option<PathBuf>)>,
-    /// what the running game's mic was given to hear, same way
-    microphone: Option<MicrophoneSource>,
-    /// set while the blowing key is held, the mic hears it
-    blowing: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// the room this program holds open, and the one it's in
-    room_server: Option<zakuro_core::room::Server>,
-    room: Option<zakuro_core::room::Connection>,
-    /// Download Play as a guest, while in a room w/ no game running
-    dlp_guest: Option<zakuro_core::download_play::Guest>,
-    /// the player's own copy of the child joined for, played instead of one sent
-    dlp_own: Option<PathBuf>,
-    /// the network the next game joins as it starts, the host's of a Download Play child
-    wireless_reboot: Option<[u8; 16]>,
     /// the window was maximized when it went full screen, leaving full screen brings that back
     maximized_before_full_screen: bool,
     /// the layout or the scale changed while the window was full screen, which kept its size,
@@ -564,7 +539,6 @@ impl ApplicationHandler for App {
             // keys let go while another window has the keyboard never come
             WindowEvent::Focused(false) => {
                 self.fast_forward_key = false;
-                self.blow(false);
                 self.keyboard.release();
             }
             WindowEvent::Resized(size) => {
@@ -662,8 +636,6 @@ impl App {
         if let Some(audio) = &self.audio {
             audio.clear();
         }
-        // a Download Play guest goes with the game
-        self.dlp_guest = None;
         // one from the command line isn't in the library (or not yet),
         // and a Download Play child listed apart from its game is there w/ no id
         let known = self.library.games.iter().find(|game| game.path == path && game.problem.is_none()).map(|game| game.program_id);
@@ -680,7 +652,6 @@ impl App {
     /// loads the game at path, the settings in force are for it
     fn start_game(&mut self, path: &Path) -> Result<(), String> {
         let mut config = self.config(&self.active);
-        config.wireless_reboot = self.wireless_reboot.take();
         // the update, DLC and Download Play child found w/ the game in the library
         if let Some(game) = self.library.games.iter().find(|game| game.path == path) {
             config.update = game.update.as_ref().map(|update| update.path.clone());
@@ -749,12 +720,6 @@ impl App {
             self.menus.message = Some(notes.join("\n\n"));
         }
         self.game = Some(game);
-        // the new game's cameras see what the settings say, and it plays in the room the player's in
-        self.camera = None;
-        self.apply_camera();
-        self.microphone = None;
-        self.apply_microphone();
-        self.link_room();
         // nothing left open holds the game back
         self.menus.menu_open = false;
         self.menus.settings_open = false;
@@ -768,9 +733,6 @@ impl App {
     fn back_to_library(&mut self) {
         self.game = None;
         self.overlay_corner = None;
-        if let Some(room) = &self.room {
-            room.playing("");
-        }
         if let Some(audio) = &self.audio {
             audio.clear();
         }
@@ -838,10 +800,6 @@ impl App {
             && !self.menus.over_game()
             && !consumed
             && !self.gui.as_ref().is_some_and(Gui::wants_keyboard);
-        // blowing into the mic while M is held
-        if code == KeyCode::KeyM && !event.repeat && !self.settings.keys.binds(KeyCode::KeyM) && (to_game || !pressed) {
-            self.blow(pressed);
-        }
         // letting go always gets thru, so no button stays held
         if to_game || !pressed {
             self.keyboard.key(event.physical_key, pressed);
@@ -948,60 +906,10 @@ impl App {
                 game.system.set_slider_3d(slider);
             }
         }
-        self.apply_camera();
-        self.apply_microphone();
         self.keyboard.set_keys(self.settings.keys.clone());
         self.gamepads.set_buttons(self.settings.pad.clone());
         self.apply_volume();
         self.apply_layout();
-    }
-
-    /// gives the running game's cameras what the settings say they see, when it isn't what they have
-    fn apply_camera(&mut self) {
-        let wanted = (self.settings.camera, self.settings.camera_picture.clone());
-        let Some(game) = &mut self.game else { return };
-        if self.camera.as_ref() == Some(&wanted) {
-            return;
-        }
-        game.system.camera = match &wanted {
-            (CameraSource::Webcam, _) => Some(Box::new(camera::Webcam::default())),
-            (CameraSource::Picture, Some(path)) => match camera::picture(path) {
-                Ok(picture) => {
-                    log::info!("the cameras see {}", path.display());
-                    Some(Box::new(picture))
-                }
-                Err(error) => {
-                    self.menus.message = Some(error);
-                    None
-                }
-            },
-            _ => None,
-        };
-        self.camera = Some(wanted);
-    }
-
-    /// gives the running game's mic what the settings say it hears, when it isn't what it has
-    fn apply_microphone(&mut self) {
-        let wanted = self.settings.microphone;
-        let Some(game) = &mut self.game else { return };
-        if self.microphone == Some(wanted) {
-            return;
-        }
-        let device = wanted == MicrophoneSource::Computer;
-        let mut microphone = microphone::HostMicrophone::new(device, self.blowing.clone());
-        // a game already listening goes on listening to the new one
-        if game.system.services.mic.is_sampling() {
-            zakuro_core::microphone::Microphone::sampling(&mut microphone, true);
-        }
-        game.system.microphone = Some(Box::new(microphone));
-        self.microphone = Some(wanted);
-    }
-
-    /// starts or stops blowing into the mic
-    fn blow(&mut self, on: bool) {
-        if self.blowing.swap(on, std::sync::atomic::Ordering::Relaxed) != on {
-            log::debug!("{} into the microphone", if on { "blowing" } else { "no longer blowing" });
-        }
     }
 
     /// puts the screens' arrangement and the window scale to use, sizing the window to them
@@ -1182,30 +1090,7 @@ impl App {
             }
             Action::SaveState => self.save_state(),
             Action::LoadState => self.load_state(),
-            Action::HostRoom => self.host_room(),
-            Action::JoinRoom => {
-                let address = self.settings.room_address.clone();
-                self.join_room(&address);
-            }
-            Action::LeaveRoom => self.leave_room(),
-            Action::DlpJoin(index) => self.join_download_play(index),
-            Action::DlpLeave => {
-                if let Some(guest) = &mut self.dlp_guest {
-                    guest.leave();
-                }
-                self.dlp_own = None;
-            }
-            Action::ChooseCameraPicture => {
-                let picked = rfd::FileDialog::new()
-                    .set_title("A picture for the cameras")
-                    .add_filter("Pictures", &["png", "jpg", "jpeg", "webp", "bmp"])
-                    .pick_file();
-                if let Some(file) = picked {
-                    self.settings.camera = CameraSource::Picture;
-                    self.settings.camera_picture = Some(file);
-                    self.apply_settings();
-                }
-            }
+            Action::HostRoom | Action::JoinRoom | Action::LeaveRoom | Action::DlpJoin(_) | Action::DlpLeave | Action::ChooseCameraPicture => {}
             Action::ChooseBackground => {
                 let picked = rfd::FileDialog::new()
                     .set_title("A picture for the library")
@@ -1311,12 +1196,6 @@ impl App {
         self.library.poll();
         self.poll_jobs();
         self.poll_gamepads();
-        // a room that went away takes the game's local wireless w/ it
-        if self.room.as_ref().is_some_and(|room| !room.open()) {
-            self.leave_room();
-            self.menus.message = Some("The room closed, or the connection to it was lost.".into());
-        }
-        self.download_play();
 
         // a game waiting on its keyboard waits for the user, not running
         let typing = self.game.as_ref().is_some_and(|game| game.system.keyboard_request().is_some());
@@ -1460,108 +1339,6 @@ impl App {
         }
     }
 
-    /// gives the running game the room the player's in, and tells the room the game
-    fn link_room(&mut self) {
-        let Some(game) = &mut self.game else { return };
-        game.system.room = self.room.as_ref().map(|room| room.link());
-        if let Some(room) = &self.room {
-            room.playing(&game.name);
-        }
-    }
-
-    /// opens a room on the port chosen, and joins it
-    fn host_room(&mut self) {
-        let name = match self.settings.room_name.trim() {
-            "" => format!("{}'s room", self.nickname()),
-            name => name.to_owned(),
-        };
-        let password = self.menus.room_password.clone();
-        match zakuro_core::room::Server::start(self.settings.room_port, &name, &password, 16) {
-            Ok(server) => {
-                let address = format!("127.0.0.1:{}", server.port());
-                self.room_server = Some(server);
-                self.join_room(&address);
-                if self.room.is_none() {
-                    self.room_server = None;
-                }
-            }
-            Err(error) => self.menus.message = Some(format!("The room could not be opened on port {}, {error}", self.settings.room_port)),
-        }
-    }
-
-    /// joins the room at address
-    fn join_room(&mut self, address: &str) {
-        let password = self.menus.room_password.clone();
-        match zakuro_core::room::Connection::join(address.trim(), &self.nickname(), &password) {
-            Ok(room) => {
-                self.room = Some(room);
-                self.link_room();
-            }
-            Err(error) => self.menus.message = Some(format!("Could not join the room, {error}.")),
-        }
-    }
-
-    /// leaves the room, and closes it when it's this program's
-    fn leave_room(&mut self) {
-        self.dlp_guest = None;
-        self.room = None;
-        self.room_server = None;
-        if let Some(game) = &mut self.game {
-            game.system.room = None;
-        }
-    }
-
-    /// Download Play as a guest, hears the offers in the room while no game runs and starts the child once the host's game begins
-    fn download_play(&mut self) {
-        let Some(room) = self.room.as_ref().filter(|_| self.game.is_none()) else {
-            self.dlp_guest = None;
-            return;
-        };
-        let guest = self.dlp_guest.get_or_insert_with(|| zakuro_core::download_play::Guest::new(room.link()));
-        guest.poll();
-        match guest.end() {
-            Some(zakuro_core::download_play::Phase::Begun { child, reboot }) => {
-                let own = self.dlp_own.take();
-                let path = match child {
-                    Some(child) => self.keep_child(&child),
-                    None => own.ok_or_else(|| "the game to download went missing".to_owned()),
-                };
-                let started = path.and_then(|path| {
-                    self.wireless_reboot = Some(reboot);
-                    self.play(&path)
-                });
-                if let Err(error) = started {
-                    self.wireless_reboot = None;
-                    self.menus.message = Some(format!("Download Play could not start the game, {error}."));
-                }
-            }
-            Some(zakuro_core::download_play::Phase::Failed(why)) => {
-                self.dlp_own = None;
-                self.menus.message = Some(format!("Download Play stopped, {why}."));
-            }
-            _ => {}
-        }
-    }
-
-    /// takes part in the Download Play offer at index, w/ the player's own copy of the child when the folder has one
-    fn join_download_play(&mut self, index: usize) {
-        let node = zakuro_core::download_play::node(self.settings.console_id, &self.nickname());
-        let Some(guest) = &mut self.dlp_guest else { return };
-        let Some(heard) = guest.offers().get(index) else { return };
-        let (host, child) = (heard.host, heard.offer.child);
-        self.dlp_own = self.library.children.iter().find(|own| own.title_id == child).map(|own| own.path.clone());
-        guest.join(host, node, self.dlp_own.is_some());
-    }
-
-    /// keeps a child the host sent, for it to run from
-    fn keep_child(&self, child: &[u8]) -> Result<PathBuf, String> {
-        let cia = zakuro_fs::Cia::read(child).map_err(|_| "the host sent something that isn't a game".to_owned())?;
-        let folder = self.data_dir.clone().unwrap_or_else(std::env::temp_dir).join("dlp");
-        let path = folder.join(format!("{:016X}.cia", cia.title_id));
-        std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&path, child)).map_err(|error| error.to_string())?;
-        Ok(path)
-    }
-
     /// the file of a slot of the running game's save states
     fn state_path(&self, slot: u8) -> Option<PathBuf> {
         let program_id = self.game.as_ref()?.system.title.as_ref()?.program_id();
@@ -1649,15 +1426,7 @@ impl App {
         let game = self.game.as_ref().map(|game| (game.name.clone(), game.fps, game.system.recompiled.is_some()));
         let fast = self.fast_forwarding;
         let keyboard = self.game.as_ref().and_then(|game| game.system.keyboard_request().cloned());
-        let room = self.room.as_ref().filter(|_| self.menus.multiplayer_open).map(|connection| {
-            let members = connection.members();
-            menus::RoomView {
-                name: connection.room().to_owned(),
-                download_play: self.dlp_guest.as_ref().map(|guest| download_play_view(guest, &members, &self.library)),
-                members: members.into_iter().map(|member| (member.nickname, member.game)).collect(),
-                port: self.room_server.as_ref().map(|server| server.port()),
-            }
-        });
+        let room: Option<menus::RoomView> = None;
         let cheats = self.game.as_ref().filter(|_| self.menus.cheats_open).map(|game| {
             game.system.cheats.iter().map(|cheat| (cheat.name.clone(), cheat.enabled, cheat.notes.join("\n"), cheat.builtin)).collect::<Vec<_>>()
         });
@@ -1727,49 +1496,6 @@ impl App {
             }
         }
     }
-}
-
-/// what the multiplayer window shows of Download Play, the offers in the room and where the guest is
-fn download_play_view(guest: &zakuro_core::download_play::Guest, members: &[zakuro_core::room::Member], library: &Library) -> menus::DlpView {
-    use zakuro_core::download_play::Phase;
-    let offers = guest
-        .offers()
-        .iter()
-        .map(|heard| {
-            let offer = &heard.offer;
-            let smdh = library::Smdh::parse(&offer.smdh);
-            let own = library.children.iter().any(|own| own.title_id == offer.child);
-            let blocked = if offer.guests >= offer.most {
-                Some("The host's game takes no more guests.".to_owned())
-            } else if !offer.sends_child && !own {
-                Some(
-                    "The game to download is encrypted on the card, so either player needs a decrypted copy of it: \
-                     decrypt the .cia in the card's Download Play partition with GodMode9 and put it in the games folder."
-                        .to_owned(),
-                )
-            } else {
-                None
-            };
-            menus::OfferView {
-                child: offer.child,
-                title: smdh.as_ref().map(|smdh| smdh.name.clone()).filter(|name| !name.is_empty()).unwrap_or_else(|| format!("{:016X}", offer.child)),
-                host: members.iter().find(|member| member.mac == heard.host).map(|member| member.nickname.clone()).unwrap_or_default(),
-                icon: smdh.map(|smdh| smdh.icon),
-                guests: offer.guests,
-                most: offer.most,
-                blocked,
-            }
-        })
-        .collect();
-    let doing = guest.phase().map(|phase| match phase {
-        Phase::Asking => ("Asking the host to join.".to_owned(), None),
-        Phase::Waiting => ("Joined. The game downloads once the host starts it.".to_owned(), None),
-        Phase::Receiving { got, total } => ("Downloading the game.".to_owned(), Some(*got as f32 / (*total).max(1) as f32)),
-        Phase::Ready => ("Ready. Waiting for the host to start the game.".to_owned(), None),
-        Phase::Begun { .. } => ("Starting the game.".to_owned(), None),
-        Phase::Failed(why) => (why.clone(), None),
-    });
-    menus::DlpView { offers, doing }
 }
 
 /// a screen as the presenter takes it, straight from the GPU when it shares the renderer's device and the GPU drew
