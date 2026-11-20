@@ -3565,14 +3565,10 @@ impl Hardware {
         }
         words.extend([unit.bool_uniforms as u32, unit.entry_point, 0, 0]);
         words.extend(shading.semantics);
-        let (_, _, vw, vh) = shading.viewport;
-        let (x_scale, y_scale) = if is_3d_pass && (vw - 240.0).abs() < 1.0 && (vh - 400.0).abs() < 1.0 {
-            let fov = self.fov_scale.clamp(0.5, 2.0);
-            let aspect = 400.0 / self.top_width.max(1.0);
-            (1.0 / fov, aspect / fov)
-        } else {
-            (1.0, 1.0)
-        };
+        // CPU-side sead::PerspectiveProjection handles widescreen aspect and FOV scaling
+        // (including CPU frustum culling), so keep GPU clip-space scale at 1.0.
+        let (x_scale, y_scale) = (1.0f32, 1.0f32);
+        let _ = is_3d_pass;
         words.extend([depth_map.scale.to_bits(), depth_map.offset.to_bits(), x_scale.to_bits(), y_scale.to_bits()]);
         let (x, y, width, height) = shading.viewport;
         words.extend([x, y, width, height].map(f32::to_bits));

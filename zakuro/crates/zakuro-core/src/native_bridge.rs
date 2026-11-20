@@ -72,3 +72,23 @@ pub unsafe extern "C" fn albw_fs_close(ctx: *mut Context, handle: u32) -> u32 {
     system.services.fs.files.remove(&file_id);
     0
 }
+
+/// Returns the current top screen width and 3D FOV scale configured by the PC UI.
+///
+/// # Safety
+/// `ctx` must be a valid `recomp_abi::Context` whose `user` points to a live `Machine`.
+#[no_mangle]
+pub unsafe extern "C" fn albw_get_view_params(
+    ctx: *mut Context,
+    out_top_width: *mut f32,
+    out_fov_scale: *mut f32,
+) {
+    let system = unsafe { system_from_ctx(ctx) };
+    let (top_width, fov_scale) = system.gpu.view_params();
+    if !out_top_width.is_null() {
+        unsafe { *out_top_width = top_width; }
+    }
+    if !out_fov_scale.is_null() {
+        unsafe { *out_fov_scale = fov_scale; }
+    }
+}

@@ -1509,6 +1509,15 @@ impl Resources {
         let _ = (top_width, fov_scale);
     }
 
+    /// returns the current top screen width and 3D FOV scale
+    pub(crate) fn view_params(&self) -> (f32, f32) {
+        #[cfg(feature = "vulkan")]
+        if let Some(hardware) = self.hardware.as_ref() {
+            return (hardware.top_width, hardware.fov_scale);
+        }
+        (400.0, 1.0)
+    }
+
     /// do draws go into twins, frame interpolation drawing the in between pictures
     pub(crate) fn twins(&self) -> bool {
         #[cfg(feature = "vulkan")]
