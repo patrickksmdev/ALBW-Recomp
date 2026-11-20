@@ -48,36 +48,26 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 ## Progresso Atual
 
 ### Concluído
-- [x] Compilação do `3dsrecomp` e análise da ROM (`CTRJack`: 25.242 funções, 0 módulos CRO, 91,6% código, 134 hints).
-- [x] Geração e compilação do port standalone `albw-port` (`albw-native` testado e rodando).
-- [x] Inicialização do Git com `.gitignore` blindado e criação do `build.sh`.
-- [x] Correção de `albw-port/Cargo.toml` para caminho relativo (`../zakuro/crates/zakuro`).
-- [x] Remoção de `zakuro/.git` para consolidar o monorepo.
-- [x] Primeiros overrides nativos em C em `overrides/core_math.c` (9 funções) e `overrides/core_mem.c` (1 função):
-  - `0x00111A64` — `sead::Random::getU32()`
-  - `0x00115C54` — `Vec3::setAdd(const Vec3&, const Vec3&)`
-  - `0x00115C70` — `Vec3::setSub(const Vec3&, const Vec3&)`
-  - `0x00115D70` — `Vec3::setMul(const Vec3&, float)`
-  - `0x00115D88` — `Vec3::setDiv(const Vec3&, float)`
-  - `0x00115DAC` — `Vec3::setScaleAdd(float, const Vec3&, const Vec3&)`
-  - `0x00115DC8` — `Vec3::normalize()`
-  - `0x00115E10` — `Vec3::cross(const Vec3&, const Vec3&)`
-  - `0x001151D8` — `Mtx33::fromMtx34(Mtx33*, const Mtx34*)`
-  - `0x00110490` — `__aeabi_memclr4(void*, uint32_t)`
+- [x] **M0 — Fundação & Monorepo:**
+  - Compilação do `3dsrecomp` e análise da ROM (`CTRJack`: 25.242 funções, 0 módulos CRO, 91,6% código, 134 hints).
+  - Geração e compilação do port standalone `albw-port` (`albw-native` testado e rodando).
+  - Inicialização do Git com `.gitignore` blindado, `build.sh` e remoção de `zakuro/.git` (commit `1ac2ba2` na `main`).
+  - Correção de `albw-port/Cargo.toml` para caminho relativo (`../zakuro/crates/zakuro`).
+  - Primeiros 10 overrides nativos em C:
+    - [overrides/core_math.c](overrides/core_math.c) (9 funções): `sead::Random::getU32()`, `Vec3::setAdd`, `Vec3::setSub`, `Vec3::setMul`, `Vec3::setDiv`, `Vec3::setScaleAdd`, `Vec3::normalize`, `Vec3::cross`, `Mtx33::fromMtx34`.
+    - [overrides/core_mem.c](overrides/core_mem.c) (1 função): `__aeabi_memclr4`.
 
 ### Em andamento / Pendente imediato
-- [ ] Fazer o commit inicial do monorepo na `main` (`git add . && git commit`).
-- [ ] Mapear quais serviços 3DS (`srv`) e `svc` o ALBW realmente utiliza em runtime.
+- [ ] **M1 (início):** Mapear quais serviços 3DS (`srv`) e `svc` o ALBW realmente utiliza em runtime.
 
 ---
 
-## Roadmap de Remoção da Emulação
+## Marcos do Projeto (Roadmap de Remoção da Emulação)
 
-1. **Enxugar `zakuro-core` e `zakuro`:**
-   - Remover serviços de 3DS não utilizados pelo jogo (`cam`, `nfc`, `uds`, `dlp`, `ir`, `cecd`, etc.).
-   - Remover UI/menus/cheats/biblioteca multi-jogo do emulador, deixando apenas o boot direto do ALBW.
-2. **Zerar fallbacks do interpretador (`zakuro-cpu`):**
-   - Monitorar instruções que ainda caem em `INTERPRET(...)` (110 ocorrências estáticas mapeadas no código gerado) e substituir funções VFP/asm por C nativo até remover a dependência de `zakuro-cpu`.
-3. **Comunicação nativa PC ↔ Jogo:**
-   - Substituir gradualmente `hid` (input), `fs` (arquivos) e `dsp` (áudio) por chamadas diretas ao host sem passar por IPC emulado (`svc 0x32`).
-   - Expandir `overrides/` em lotes usando funções e structs já documentadas em `albw-decomp-ai`.
+| Marco | Foco | Entregáveis Principais | Critério de Pronto |
+|---|---|---|---|
+| **M0** | Fundação & Monorepo | `3dsrecomp`, `albw-port`, `build.sh`, monorepo `zakuro/`, primeiros overrides | `[x]` Jogo compilando e rodando via `./build.sh run` |
+| **M1** | Poda de `zakuro` & `zakuro-core` | Mapear `srv`/`svc` usados pelo ALBW; remover serviços ociosos (`cam`, `nfc`, `uds`, `dlp`, `ir`, `cecd`, etc.) e UI/menus/cheats/biblioteca multi-jogo | `[ ]` Boot direto no ALBW com runtime enxuto e sem regressão |
+| **M2** | Core Nativo & Zero `zakuro-cpu` | Expandir `overrides/` (matemática `sead`/VFP, `mem*`/`str*`, containers) com base em `albw-decomp-ai`; auditar `INTERPRET(...)` reais | `[ ]` Execução 100% nativa sem fallback para `zakuro-cpu` |
+| **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[ ]` Input, arquivos e áudio sem camada HLE de serviço 3DS |
+| **M4** | Kernel & GPU Desacoplados | Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO e desacoplar renderização Vulkan (`zakuro-gpu`) do modelo de emulador | `[ ]` Executável nativo independente da arquitetura do emulador |
