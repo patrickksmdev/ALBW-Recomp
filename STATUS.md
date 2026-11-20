@@ -62,7 +62,7 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - Removidos 11 serviços ociosos (`boss`, `frd`, `ir`, `ir_rst`, `ldr_ro`, `nfc`, `y2r`, `cam`, `mic`, `uds`, `dlp`), subsistemas `camera`/`microphone`/`room`/`download_play`, UI de multiplayer/cheats/câmera/microfone e o recompilador/downloader Zig em runtime (`recompile.rs`, `zig.rs`, `recomp3ds`, `nokhwa`, `sha2`).
 
 ### Em andamento / Pendente imediato
-- [ ] **M2 (próximo):** Expandir `overrides/` (matemática `sead`/VFP, `mem*`/`str*`, containers) usando `albw-decomp-ai` e auditar `INTERPRET(...)` reais para eliminar a dependência de `zakuro-cpu`.
+- [ ] **M2 (em andamento):** Expandir `overrides/` (12 overrides ativos: `core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2 — `ListNode::insertBefore` e `ListNode::erase_`) e confirmar em runtime que nenhum `INTERPRET(...)` executa para eliminar a dependência de `zakuro-cpu`.
 
 ---
 
