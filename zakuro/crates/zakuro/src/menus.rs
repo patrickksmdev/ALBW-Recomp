@@ -12,7 +12,7 @@ use crate::library::{Game, Library, ICON_SIZE};
 use crate::recompile::{Job, Stage, Wanted};
 use crate::gamepad::button_name;
 use crate::settings::{
-    game_key, CameraSource, Filter, GameSettings, Keys, Language, MicrophoneSource, Orientation, PadButtons, Renderer, Screens, Settings, Stereo3d, TopShape,
+    game_key, Filter, GameSettings, Keys, Language, Orientation, PadButtons, Renderer, Screens, Settings, Stereo3d, TopShape,
 };
 
 /// what the user asked for
@@ -31,18 +31,9 @@ pub enum Action {
     CancelWaiting,
     ChooseFolder,
     ChooseBackground,
-    /// pick the picture the cameras see
-    ChooseCameraPicture,
     /// save the game's state to the chosen slot, or load it from there
     SaveState,
     LoadState,
-    /// open a room and join it, join someone else's, or leave the one joined
-    HostRoom,
-    JoinRoom,
-    LeaveRoom,
-    /// take part in the Download Play offer at this place in the list, or leave the one taken part in
-    DlpJoin(usize),
-    DlpLeave,
     Rescan,
     Resume,
     Reset,
@@ -55,24 +46,12 @@ pub enum Action {
     Settings,
     /// close the game's keyboard w/ this text and the button pressed
     Keyboard(String, usize),
-    /// turn the running game's cheat at this index on or off
-    Cheat(usize, bool),
-    /// add a cheat, its name and its code, to the running game
-    AddCheat(String, String),
-    /// read the running game's cheats from their file again
-    ReloadCheats,
-    /// show the cheats folder (no judgment)
-    CheatsFolder,
 }
 
 #[derive(Default)]
 pub struct Menus {
     /// the menu over a running game
     pub menu_open: bool,
-    /// the cheats window, and the cheat being written in it
-    pub cheats_open: bool,
-    cheat_name: String,
-    cheat_code: String,
     pub settings_open: bool,
     /// the game whose own settings are open, its id and its name
     pub game_settings: Option<(u64, String)>,
@@ -86,11 +65,6 @@ pub struct Menus {
     pub toast: Option<(String, std::time::Instant)>,
     /// the slot states get saved to and loaded from, 1 to 9
     pub slot: u8,
-    /// the multiplayer window, and the password typed in it
-    pub multiplayer_open: bool,
-    pub room_password: String,
-    /// the icons of the games offered for Download Play
-    dlp_icons: HashMap<u64, egui::TextureHandle>,
     /// a report on the game, to copy from the message it goes w/, and from no other
     pub report: Option<(String, String)>,
     /// what's being typed into the game's keyboard, and what it asked for
@@ -99,36 +73,6 @@ pub struct Menus {
     pub compiler_offer: Option<Vec<Wanted>>,
     icons: HashMap<PathBuf, egui::TextureHandle>,
     background: Background,
-}
-
-/// the room the player is in, as the multiplayer window shows it
-pub struct RoomView {
-    pub name: String,
-    /// each member's nickname and the game they play
-    pub members: Vec<(String, String)>,
-    /// the port of the room this program holds open, when it's its own
-    pub port: Option<u16>,
-    /// Download Play, while no game runs
-    pub download_play: Option<DlpView>,
-}
-
-/// the Download Play offers in the room, and where the guest is
-pub struct DlpView {
-    pub offers: Vec<OfferView>,
-    /// what the guest is doing, and how far along, while it takes part
-    pub doing: Option<(String, Option<f32>)>,
-}
-
-pub struct OfferView {
-    pub child: u64,
-    pub title: String,
-    pub host: String,
-    /// RGBA, ICON_SIZE square
-    pub icon: Option<Vec<u8>>,
-    pub guests: u8,
-    pub most: u8,
-    /// why the player can't take part, when they can't
-    pub blocked: Option<String>,
 }
 
 /// the picture behind the library, decoded away from the UI
@@ -222,9 +166,6 @@ impl Menus {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.button("Settings").clicked() {
                         self.settings_open = true;
-                    }
-                    if ui.button("Multiplayer").clicked() {
-                        self.multiplayer_open = true;
                     }
                     if ui.add_enabled(settings.games.is_some(), egui::Button::new("Refresh")).clicked() {
                         actions.push(Action::Rescan);
@@ -477,19 +418,6 @@ impl Menus {
                 if let Some(program_id) = program_id.filter(|_| wide(ui, "Settings for this game")) {
                     self.game_settings = Some((program_id, name.to_owned()));
                 }
-                if wide(ui, "Cheats") {
-                    self.cheats_open = true;
-                }
-                if wide(ui, "Multiplayer") {
-                    self.multiplayer_open = true;
-                }
-                if ui
-                    .add_sized([200.0, 28.0], egui::Button::new("Show the camera a picture"))
-                    .on_hover_text("Pick a picture for the console's cameras to see, a QR code's say, in place of the computer's camera.")
-                    .clicked()
-                {
-                    actions.push(Action::ChooseCameraPicture);
-                }
                 if wide(ui, "Copy info for a report") {
                     actions.push(Action::CopyReport);
                 }
@@ -508,173 +436,6 @@ impl Menus {
                     ui.label(RichText::new(format!("{waiting} more waiting to recompile")).weak());
                 }
             });
-        actions
-    }
-
-    /// the cheats window over a game, when open, its cheats by name, if each is on, and their notes
-    pub fn cheats(&mut self, ctx: &egui::Context, cheats: &[(String, bool, String, bool)]) -> Vec<Action> {
-        let mut actions = Vec::new();
-        let mut open = self.cheats_open;
-        egui::Window::new("Cheats").open(&mut open).default_width(380.0).show(ctx, |ui| {
-            let mut checkbox = |ui: &mut egui::Ui, index: usize, name: &str, enabled: bool, notes: &str| {
-                let mut on = enabled;
-                let mut response = ui.checkbox(&mut on, name);
-                if !notes.is_empty() {
-                    response = response.on_hover_text(notes);
-                }
-                if response.changed() {
-                    actions.push(Action::Cheat(index, on));
-                }
-            };
-            // Zakuro's own, tested on this build of the game
-            if cheats.iter().any(|cheat| cheat.3) {
-                ui.label(RichText::new("Enhancements").strong());
-                for (index, (name, enabled, notes, _)) in cheats.iter().enumerate().filter(|(_, cheat)| cheat.3) {
-                    checkbox(ui, index, name, *enabled, "");
-                    // what it does to the game and who made it, in sight b4 it gets turned on
-                    ui.indent(index, |ui| ui.label(RichText::new(notes).weak().small()));
-                }
-                ui.separator();
-            }
-            if !cheats.iter().any(|cheat| !cheat.3) {
-                ui.label(RichText::new("No cheats yet. Add one below, or put the cheat file Citra or Azahar has for this game in the cheats folder.").weak());
-            }
-            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                for (index, (name, enabled, notes, _)) in cheats.iter().enumerate().filter(|(_, cheat)| !cheat.3) {
-                    checkbox(ui, index, name, *enabled, notes);
-                }
-            });
-            ui.separator();
-            ui.label("Add a cheat");
-            ui.add(egui::TextEdit::singleline(&mut self.cheat_name).hint_text("Name"));
-            ui.add(egui::TextEdit::multiline(&mut self.cheat_code).hint_text("00000000 00000000").desired_rows(4).font(egui::TextStyle::Monospace));
-            ui.horizontal(|ui| {
-                if ui.button("Add").clicked() && !self.cheat_code.trim().is_empty() {
-                    actions.push(Action::AddCheat(std::mem::take(&mut self.cheat_name), std::mem::take(&mut self.cheat_code)));
-                }
-                if ui.button("Reload").on_hover_text("Read the cheats again from their file, after changing it.").clicked() {
-                    actions.push(Action::ReloadCheats);
-                }
-                if ui.button("Open the cheats folder").clicked() {
-                    actions.push(Action::CheatsFolder);
-                }
-            });
-        });
-        self.cheats_open = open;
-        actions
-    }
-
-    /// the multiplayer window, when open, the room the player's in, or joining one and opening one
-    pub fn multiplayer(&mut self, ctx: &egui::Context, settings: &mut Settings, room: Option<&RoomView>) -> Vec<Action> {
-        let mut actions = Vec::new();
-        let before = settings.clone();
-        let mut open = self.multiplayer_open;
-        egui::Window::new("Multiplayer").open(&mut open).default_width(380.0).show(ctx, |ui| {
-            ui.label(
-                RichText::new("Local wireless play with others goes through a room, which one of you opens and the others join over the network.")
-                    .weak(),
-            );
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label("Nickname");
-                ui.add(egui::TextEdit::singleline(&mut settings.nickname).char_limit(10).hint_text("Player"))
-                    .on_hover_text("The name others see, and the console's own, which games show. It changes with the next game started.");
-            });
-            ui.separator();
-            match room {
-                Some(room) => {
-                    ui.label(RichText::new(format!("In the room {}", room.name)).strong());
-                    if let Some(port) = room.port {
-                        ui.label(format!("Open on port {port}. Others join with this computer's address and that port. Over the internet the router has to let that port through."));
-                    }
-                    ui.add_space(4.0);
-                    for (nickname, game) in &room.members {
-                        match game.is_empty() {
-                            true => ui.label(nickname),
-                            false => ui.label(format!("{nickname}, playing {game}")),
-                        };
-                    }
-                    ui.add_space(4.0);
-                    let leave = if room.port.is_some() { "Close the room" } else { "Leave the room" };
-                    if ui.button(leave).clicked() {
-                        actions.push(Action::LeaveRoom);
-                    }
-                    if let Some(download_play) = &room.download_play {
-                        ui.separator();
-                        ui.label(RichText::new("Download Play").strong());
-                        match &download_play.doing {
-                            Some((doing, progress)) => {
-                                ui.label(doing);
-                                if let Some(progress) = progress {
-                                    ui.add(egui::ProgressBar::new(*progress).show_percentage());
-                                }
-                                if ui.button("Leave").clicked() {
-                                    actions.push(Action::DlpLeave);
-                                }
-                            }
-                            None if download_play.offers.is_empty() => {
-                                ui.label(RichText::new("No one in the room offers a game to download. A game offers one from its own Download Play menu.").weak());
-                            }
-                            None => {
-                                for (index, offer) in download_play.offers.iter().enumerate() {
-                                    ui.horizontal(|ui| {
-                                        if let Some(pixels) = &offer.icon {
-                                            let texture = self.dlp_icons.entry(offer.child).or_insert_with(|| {
-                                                let image = egui::ColorImage::from_rgba_unmultiplied([ICON_SIZE, ICON_SIZE], pixels);
-                                                ui.ctx().load_texture(format!("download play {:016X}", offer.child), image, egui::TextureOptions::LINEAR)
-                                            });
-                                            ui.add(egui::Image::new(&*texture).fit_to_exact_size(Vec2::splat(32.0)));
-                                        }
-                                        ui.vertical(|ui| {
-                                            ui.label(RichText::new(&offer.title).strong());
-                                            ui.label(RichText::new(format!("from {}, {} of {} joined", offer.host, offer.guests, offer.most)).weak());
-                                        });
-                                        if ui.add_enabled(offer.blocked.is_none(), egui::Button::new("Join")).clicked() {
-                                            actions.push(Action::DlpJoin(index));
-                                        }
-                                    });
-                                    if let Some(why) = &offer.blocked {
-                                        ui.label(RichText::new(why).weak());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                None => {
-                    ui.label(RichText::new("Join a room").strong());
-                    ui.horizontal(|ui| {
-                        ui.label("Address");
-                        ui.add(egui::TextEdit::singleline(&mut settings.room_address).hint_text("192.168.0.10:24873"));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Password");
-                        ui.add(egui::TextEdit::singleline(&mut self.room_password).password(true).hint_text("none"));
-                    });
-                    if ui.add_enabled(!settings.room_address.trim().is_empty(), egui::Button::new("Join")).clicked() {
-                        actions.push(Action::JoinRoom);
-                    }
-                    ui.separator();
-                    ui.label(RichText::new("Open a room").strong());
-                    ui.horizontal(|ui| {
-                        ui.label("Name");
-                        ui.add(egui::TextEdit::singleline(&mut settings.room_name).hint_text("Zakuro"));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Port");
-                        ui.add(egui::DragValue::new(&mut settings.room_port).range(1024..=65535));
-                    });
-                    ui.label(RichText::new("The password above, when there is one, is the room's.").weak());
-                    if ui.button("Open").clicked() {
-                        actions.push(Action::HostRoom);
-                    }
-                }
-            }
-        });
-        self.multiplayer_open = open;
-        if *settings != before {
-            actions.push(Action::Settings);
-        }
         actions
     }
 
@@ -744,32 +505,6 @@ impl Menus {
                 ui.separator();
                 ui.heading("Emulation");
                 language(ui, &mut settings.language);
-                egui::ComboBox::from_label("Cameras").selected_text(settings.camera.name()).show_ui(ui, |ui| {
-                    for source in CameraSource::ALL {
-                        ui.selectable_value(&mut settings.camera, source, source.name());
-                    }
-                })
-                .response
-                .on_hover_text("What the console's cameras see. The computer's camera turns on only while a game takes pictures.");
-                if settings.camera == CameraSource::Picture {
-                    ui.horizontal(|ui| {
-                        ui.label("Picture");
-                        match &settings.camera_picture {
-                            Some(path) => ui.label(path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()),
-                            None => ui.label(RichText::new("none").weak()),
-                        };
-                        if ui.button("Choose…").clicked() {
-                            actions.push(Action::ChooseCameraPicture);
-                        }
-                    });
-                }
-                egui::ComboBox::from_label("Microphone").selected_text(settings.microphone.name()).show_ui(ui, |ui| {
-                    for source in MicrophoneSource::ALL {
-                        ui.selectable_value(&mut settings.microphone, source, source.name());
-                    }
-                })
-                .response
-                .on_hover_text("What the console's microphone hears. The computer's microphone is open only while a game listens, which some do all the time, Super Mario 3D Land among them. Holding M blows into it either way, for games that ask you to.");
                 code(ui, &mut settings.recompiled);
                 ui.label(RichText::new("It changes with the next game started, or Reset.").weak());
 

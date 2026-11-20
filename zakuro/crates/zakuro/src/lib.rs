@@ -1090,7 +1090,6 @@ impl App {
             }
             Action::SaveState => self.save_state(),
             Action::LoadState => self.load_state(),
-            Action::HostRoom | Action::JoinRoom | Action::LeaveRoom | Action::DlpJoin(_) | Action::DlpLeave | Action::ChooseCameraPicture => {}
             Action::ChooseBackground => {
                 let picked = rfd::FileDialog::new()
                     .set_title("A picture for the library")
@@ -1123,55 +1122,6 @@ impl App {
                 if let (Some(game), Some(gui)) = (&self.game, &self.gui) {
                     gui.ctx.copy_text(report::text(&game.name, &game.system));
                     self.menus.message = Some("The game's details and the end of the log are copied. Paste them in your report and fill in what happens.".into());
-                }
-            }
-            Action::Cheat(index, on) => {
-                let Some(game) = &mut self.game else { return };
-                let program_id = game.system.title.as_ref().map_or(0, |title| title.program_id());
-                let Some(cheat) = game.system.cheats.get_mut(index) else { return };
-                cheat.enabled = on;
-                log::info!("{} {} {}", if cheat.builtin { "enhancement" } else { "cheat" }, cheat.name, if on { "on" } else { "off" });
-                if cheat.builtin {
-                    // an enhancement stays on for the game in the settings
-                    let names = self.settings.enhancements.entry(format!("{program_id:016X}")).or_default();
-                    names.retain(|name| *name != cheat.name);
-                    if on {
-                        names.push(cheat.name.clone());
-                    }
-                    self.settings.save();
-                } else {
-                    self.save_cheats();
-                }
-            }
-            Action::AddCheat(name, code) => {
-                let lines: Vec<String> = code.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect();
-                if lines.iter().any(|line| !zakuro_core::cheats::is_code(line)) {
-                    self.menus.message = Some("Some of those lines aren't codes like 00000000 00000000, the cheat skips them.".into());
-                }
-                if let Some(game) = &mut self.game {
-                    let name = match name.trim() {
-                        "" => format!("Cheat {}", game.system.cheats.len() + 1),
-                        name => name.to_owned(),
-                    };
-                    let mut cheat = zakuro_core::cheats::Cheat::new(&name, lines, Vec::new());
-                    cheat.enabled = true;
-                    game.system.cheats.push(cheat);
-                }
-                self.save_cheats();
-            }
-            Action::ReloadCheats => {
-                if let (Some(path), Some(game)) = (self.cheats_path(), &mut self.game) {
-                    let enhancements: Vec<_> = game.system.cheats.drain(..).filter(|cheat| cheat.builtin).collect();
-                    game.system.cheats = zakuro_core::cheats::load(&path);
-                    game.system.cheats.extend(enhancements);
-                }
-            }
-            Action::CheatsFolder => {
-                if let Some(folder) = self.cheats_path().and_then(|path| path.parent().map(Path::to_owned)) {
-                    match std::fs::create_dir_all(&folder) {
-                        Ok(()) => show_folder(&folder),
-                        Err(error) => self.menus.message = Some(format!("The cheats folder can't be made: {error}")),
-                    }
                 }
             }
             Action::Quit => event_loop.exit(),
@@ -1396,20 +1346,6 @@ impl App {
         self.next_frame = Instant::now();
     }
 
-    /// the file of the running game's cheats
-    fn cheats_path(&self) -> Option<PathBuf> {
-        let program_id = self.game.as_ref()?.system.title.as_ref()?.program_id();
-        Some(zakuro_core::cheats::path(self.data_dir.as_ref()?, program_id))
-    }
-
-    /// writes the running game's cheats to their file
-    fn save_cheats(&mut self) {
-        let (Some(path), Some(game)) = (self.cheats_path(), &self.game) else { return };
-        if let Err(error) = zakuro_core::cheats::save(&path, &game.system.cheats) {
-            self.menus.message = Some(format!("The cheats can't be saved: {error}"));
-        }
-    }
-
     /// the menus, and the actions they asked for, done
     fn interface(&mut self, event_loop: &ActiveEventLoop) -> Overlay {
         // when the chosen slot was saved to, while the menu shows it
@@ -1426,10 +1362,6 @@ impl App {
         let game = self.game.as_ref().map(|game| (game.name.clone(), game.fps, game.system.recompiled.is_some()));
         let fast = self.fast_forwarding;
         let keyboard = self.game.as_ref().and_then(|game| game.system.keyboard_request().cloned());
-        let room: Option<menus::RoomView> = None;
-        let cheats = self.game.as_ref().filter(|_| self.menus.cheats_open).map(|game| {
-            game.system.cheats.iter().map(|cheat| (cheat.name.clone(), cheat.enabled, cheat.notes.join("\n"), cheat.builtin)).collect::<Vec<_>>()
-        });
         let corner = self.overlay_corner.clone().filter(|_| game.is_some());
         let (menus, library, settings, jobs, waiting) = (&mut self.menus, &self.library, &mut self.settings, &self.jobs, &self.waiting);
         let mut actions = Vec::new();
@@ -1446,12 +1378,6 @@ impl App {
             let own = program_id.is_some_and(|id| settings.has_own(id));
             actions.extend(menus.settings(ui.ctx(), settings, own));
             actions.extend(menus.game_settings(ui.ctx(), settings));
-            if menus.multiplayer_open {
-                actions.extend(menus.multiplayer(ui.ctx(), settings, room.as_ref()));
-            }
-            if let Some(cheats) = &cheats {
-                actions.extend(menus.cheats(ui.ctx(), cheats));
-            }
             if let Some(request) = &keyboard {
                 actions.extend(menus.keyboard(ui.ctx(), request));
             }

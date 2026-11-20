@@ -61,7 +61,8 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 - [x] **M1 (mapeamento inicial):** `albw-run.log` capturou os serviços e SVCs usados até a tela inicial:
   - **9 serviços (`srv`):** `APT:U`, `cecd:u`, `cfg:u`, `dsp::DSP`, `fs:USER`, `gsp::Gpu`, `hid:USER`, `ndm:u`, `ptm:u` (0 IPCs não implementados).
   - **23 SVCs:** `0x01`, `0x08`, `0x09`, `0x0A`, `0x0B`, `0x13`, `0x14`, `0x17`, `0x18`, `0x19`, `0x1F`, `0x21`, `0x22`, `0x23`, `0x24`, `0x25`, `0x27`, `0x28`, `0x2D`, `0x32`, `0x37`, `0x38`, `0x3A`.
-- [ ] **M1 (poda):** Remover serviços ociosos (`cam`, `uds`, `dlp`, `ir`, `ir_rst`, `y2r`, `mic`, `boss`, `frd`, `nfc`, `ldr_ro`) e UI/menus multi-jogo de `zakuro`/`zakuro-core`.
+- [x] **M1 (poda de serviços e subsistemas):** Removidos 11 serviços ociosos (`boss`, `frd`, `ir`, `ir_rst`, `ldr_ro`, `nfc`, `y2r`, `cam`, `mic`, `uds`, `dlp`), subsistemas `camera`/`microphone`/`room`/`download_play` e menus de multiplayer/cheats/câmera/microfone da UI.
+- [ ] **M1 (finalização):** Remover biblioteca multi-jogo / recompilador JIT em runtime (`library`/`recompile`/`zig`) para boot direto exclusivo do ALBW.
 
 ---
 
