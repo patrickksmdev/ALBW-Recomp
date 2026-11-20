@@ -61,8 +61,11 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - Mapeamento em runtime via `albw-run.log`: 9 serviços (`APT:U`, `cecd:u`, `cfg:u`, `dsp::DSP`, `fs:USER`, `gsp::Gpu`, `hid:USER`, `ndm:u`, `ptm:u`), 23 SVCs e 0 IPCs não implementados.
   - Removidos 11 serviços ociosos (`boss`, `frd`, `ir`, `ir_rst`, `ldr_ro`, `nfc`, `y2r`, `cam`, `mic`, `uds`, `dlp`), subsistemas `camera`/`microphone`/`room`/`download_play`, UI de multiplayer/cheats/câmera/microfone e o recompilador/downloader Zig em runtime (`recompile.rs`, `zig.rs`, `recomp3ds`, `nokhwa`, `sha2`).
 
+- [x] **M2 — Core Nativo & Zero Fallbacks:**
+  - 12 overrides core ativos (`core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2).
+  - Auditoria no `albw-run.log`: **99,93%** nativo (`3.826.192.811` instruções recompiladas); os `0,07%` restantes (`0x0016AC14`, `0x003FA6F0`) já são código recompilado (`L_0016AC14`, `L_003FA6F0`) e só rodaram em `cpu.step()` por corte de `budget` de frame/áudio (0 fallbacks reais de `INTERPRET(...)`).
+
 ### Em andamento / Pendente imediato
-- [ ] **M2 (em andamento):** Expandir `overrides/` (12 overrides core: `core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2) e zerar os últimos `0,10%` de fallback para `zakuro-cpu` (`0x0016AC14..0x0016AC34`, `0x00115E9C`).
 - [ ] **M3 (em andamento):** Ponte direta [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (4 overrides ativos sem `svc 0x32`: `gsp::Gpu#0x0008`, `dsp::DSP#0x0013` `FlushDataCache`, `gsp::Gpu#0x000C` `TriggerCmdReqQueue` e `FSFile#0x0802` `Read`). Próximo: abertura/fechamento de `fs` e áudio `dsp`.
 
 ---
