@@ -65,8 +65,13 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - 12 overrides core ativos (`core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2).
   - Auditoria no `albw-run.log`: **99,93%** nativo (`3.826.192.811` instruções recompiladas); os `0,07%` restantes (`0x0016AC14`, `0x003FA6F0`) já são código recompilado (`L_0016AC14`, `L_003FA6F0`) e só rodaram em `cpu.step()` por corte de `budget` de frame/áudio (0 fallbacks reais de `INTERPRET(...)`).
 
+- [x] **M3 — I/O Nativo (PC ↔ Jogo):**
+  - `hid:USER` já opera direto via memória compartilhada sem IPC por frame.
+  - Ponte direta em [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (6 overrides ativos sem `svc 0x32`): `gsp::Gpu#0x0008` e `dsp::DSP#0x0013` (`FlushDataCache`), `gsp::Gpu#0x000C` (`TriggerCmdReqQueue`), `FSFile#0x0802` (`Read`), `FSFile#0x0808` (`Close`) e `dsp::DSP#0x000C` (`ConvertProcessAddressFromDspDram`).
+  - Confirmado no `albw-run.log`: todos os caminhos quentes de `svc 0x32` zerados (maior IPC restante é apenas inicialização pontual com 64 chamadas).
+
 ### Em andamento / Pendente imediato
-- [ ] **M3 (em andamento):** Ponte direta [zakuro-core/src/native_bridge.rs](zakuro/crates/zakuro-core/src/native_bridge.rs) + [overrides/host_io.c](overrides/host_io.c) (6 overrides ativos sem `svc 0x32`: `gsp::Gpu#0x0008`, `dsp::DSP#0x0013` `FlushDataCache`, `gsp::Gpu#0x000C` `TriggerCmdReqQueue`, `FSFile#0x0802` `Read`, `FSFile#0x0808` `Close` e `dsp::DSP#0x000C` `ConvertProcessAddressFromDspDram`). Próximo: `fs:USER` open e fechamento do M3.
+- [ ] **M4 (próximo):** Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO, separar o interpretador `zakuro-cpu` do `System::cpu` e desacoplar o backend Vulkan (`zakuro-gpu`).
 
 ---
 
@@ -77,5 +82,5 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
 | **M0** | Fundação & Monorepo | `3dsrecomp`, `albw-port`, `build.sh`, monorepo `zakuro/`, primeiros overrides | `[x]` Jogo compilando e rodando via `./build.sh run` |
 | **M1** | Poda de `zakuro` & `zakuro-core` | Mapear `srv`/`svc` usados pelo ALBW; remover serviços ociosos (`cam`, `nfc`, `uds`, `dlp`, `ir`, `cecd`, etc.), UI de multiplayer/cheats e recompilador em runtime | `[x]` Boot direto no ALBW com runtime enxuto e sem regressão |
 | **M2** | Core Nativo & Zero Fallbacks | Expandir `overrides/` (`sead`, `mem*`, `math`) e auditar `INTERPRET(...)` reais | `[x]` 100% do código executado coberto por C recompilado/nativo |
-| **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[ ]` Input, arquivos e áudio sem camada HLE de serviço 3DS |
+| **M3** | I/O Nativo (PC ↔ Jogo) | Substituir `hid` (input), `fs` (assets/save) e `dsp` (áudio) por chamadas diretas ao host sem IPC emulado (`svc 0x32`) | `[x]` Caminhos quentes de `gsp`, `fs`, `dsp` e `hid` sem IPC emulado |
 | **M4** | Kernel & GPU Desacoplados | Reduzir microkernel HLE (`svc`/threads/sync) a primitivas do SO e desacoplar renderização Vulkan (`zakuro-gpu`) do modelo de emulador | `[ ]` Executável nativo independente da arquitetura do emulador |
