@@ -64,6 +64,10 @@ pub struct ServiceState {
     /// commands we logged as unimplemented, so the log stays readable and the diagnostics overlay can show what a
     /// title's actually asking for
     pub unimplemented: BTreeMap<(String, u16), u32>,
+    #[serde(skip)]
+    pub ipc_counts: BTreeMap<(String, u16), u64>,
+    #[serde(skip)]
+    pub ipc_callers: BTreeMap<(String, u16), (u32, u32)>,
 }
 
 /// entry point from svcSendSyncRequest
@@ -75,6 +79,12 @@ pub fn handle_request(system: &mut System, target: Target) {
     let header = buffer.header(&mut system.memory);
     let command = header.command_id();
     let name = target.name().to_owned();
+    *system.services.ipc_counts.entry((name.clone(), command)).or_insert(0) += 1;
+    system
+        .services
+        .ipc_callers
+        .entry((name.clone(), command))
+        .or_insert((system.cpu.current_pc(), system.cpu.regs[14]));
 
     log::trace!(
         "IPC {name} cmd 0x{command:04X} ({} normal, {} translate)",

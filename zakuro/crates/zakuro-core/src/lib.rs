@@ -201,6 +201,7 @@ pub struct System {
     /// instrs the interpreter ran for lack of recompiled code vs ones recompiled code ran, to see how much the lib covers
     pub interpreted_instructions: u64,
     pub recompiled_instructions: u64,
+    pub interpreted_pcs: BTreeMap<u32, u64>,
 }
 
 /// cycles per frame of the screens, they refresh at 268111856 / 4481136 so ~59.83 Hz not 60
@@ -277,6 +278,7 @@ impl System {
             hints: None,
             interpreted_instructions: 0,
             recompiled_instructions: 0,
+            interpreted_pcs: BTreeMap::new(),
         }
     }
 
@@ -435,6 +437,7 @@ impl System {
                 self.interpreted_instructions += 1;
                 // past the step's start when the code ran svcs in place
                 let (pc, thumb) = (self.cpu.regs[15], self.cpu.cpsr.thumb);
+                *self.interpreted_pcs.entry(pc | thumb as u32).or_insert(0) += 1;
                 if let (Some(hints), Some(library)) = (&mut self.hints, &self.recompiled) {
                     if !library.has_code(pc | thumb as u32) {
                         hints.interpreted(pc, thumb);
@@ -1489,6 +1492,30 @@ impl Drop for System {
                 svcs.len(),
                 svcs.join(", ")
             );
+            eprintln!(
+                "[albw-profile] coverage: recompiled={} interpreted={}",
+                self.recompiled_instructions,
+                self.interpreted_instructions,
+            );
+            if !self.interpreted_pcs.is_empty() {
+                let mut top_pcs: Vec<_> = self.interpreted_pcs.iter().collect();
+                top_pcs.sort_by(|a, b| b.1.cmp(a.1));
+                let summary: Vec<String> = top_pcs.into_iter().take(10).map(|(pc, n)| format!("0x{pc:08X}:{n}")).collect();
+                eprintln!("[albw-profile] top_interpreted_pcs: [{}]", summary.join(", "));
+            }
+            if !self.services.ipc_counts.is_empty() {
+                let mut top_ipc: Vec<_> = self.services.ipc_counts.iter().collect();
+                top_ipc.sort_by(|a, b| b.1.cmp(a.1));
+                let summary: Vec<String> = top_ipc
+                    .into_iter()
+                    .take(15)
+                    .map(|((svc, cmd), n)| {
+                        let (pc, lr) = self.services.ipc_callers.get(&(svc.clone(), *cmd)).copied().unwrap_or((0, 0));
+                        format!("{svc}#0x{cmd:04X}:{n}@(pc=0x{pc:08X},lr=0x{lr:08X})")
+                    })
+                    .collect();
+                eprintln!("[albw-profile] top_ipc: [{}]", summary.join(", "));
+            }
             if !self.services.unimplemented.is_empty() {
                 eprintln!(
                     "[albw-profile] unimplemented IPC: {:?}",

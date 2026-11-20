@@ -62,7 +62,8 @@ Documento vivo para manter o contexto técnico, decisões de arquitetura e progr
   - Removidos 11 serviços ociosos (`boss`, `frd`, `ir`, `ir_rst`, `ldr_ro`, `nfc`, `y2r`, `cam`, `mic`, `uds`, `dlp`), subsistemas `camera`/`microphone`/`room`/`download_play`, UI de multiplayer/cheats/câmera/microfone e o recompilador/downloader Zig em runtime (`recompile.rs`, `zig.rs`, `recomp3ds`, `nokhwa`, `sha2`).
 
 ### Em andamento / Pendente imediato
-- [ ] **M2 (em andamento):** Expandir `overrides/` (12 overrides ativos: `core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2 — `ListNode::insertBefore` e `ListNode::erase_`) e confirmar em runtime que nenhum `INTERPRET(...)` executa para eliminar a dependência de `zakuro-cpu`.
+- [ ] **M2 (em andamento):** Expandir `overrides/` (12 overrides core: `core_math.c` com 9, `core_mem.c` com 1, `core_sead.c` com 2) e zerar os últimos `0,10%` de fallback para `zakuro-cpu` (`0x0016AC14..0x0016AC34`, `0x00115E9C`).
+- [ ] **M3 (em andamento):** Iniciado [overrides/host_io.c](overrides/host_io.c) (2 overrides: `gsp::Gpu#0x0008` e `dsp::DSP#0x0013` `FlushDataCache` como no-ops nativos sem `svc 0x32`). Próximo: ponte direta de `fs` e `dsp`/`gsp`.
 
 ---
 
