@@ -89,6 +89,7 @@ pub fn run_with(linked: Option<Linked>, overlay: Option<Box<dyn GameOverlay>>) {
         gamepads: gamepad::Gamepads::new(settings.pad.clone()),
         scale: options.scale.unwrap_or(settings.scale).max(1),
         layout: settings.layout,
+        effective_layout: settings.layout.screens(),
         orientation: settings.orientation,
         top_shape: settings.top_shape,
         options,
@@ -353,6 +354,8 @@ struct App {
     scale: u32,
     /// how the screens are arranged
     layout: Screens,
+    /// effective screen layout (e.g. temporarily ItemMenuSplit while the SELECT item menu is open)
+    effective_layout: zakuro_gpu::ScreenLayout,
     orientation: Orientation,
     /// how wide the top screen shows
     top_shape: settings::TopShape,
@@ -753,7 +756,7 @@ impl App {
     fn touch(&mut self) {
         let Some(window) = &self.window else { return };
         let size = window.inner_size();
-        let (_, bottom) = layout(size.width, size.height, self.layout.screens(), self.orientation.screen_orientation(), self.top_shape.width(), self.active.integer_scale);
+        let (_, bottom) = layout(size.width, size.height, self.effective_layout(), self.orientation.screen_orientation(), self.top_shape.width(), self.active.integer_scale);
         // w/ the top screen alone there's nothing to touch
         let Some(bottom) = bottom else {
             self.keyboard.touch(None);
@@ -849,8 +852,9 @@ impl App {
             self.layout = self.active.layout;
             self.orientation = self.active.orientation;
             self.top_shape = self.active.top_shape;
+            self.effective_layout = self.effective_layout();
             if let Some(backend) = &mut self.backend {
-                backend.set_layout(self.layout.screens());
+                backend.set_layout(self.effective_layout);
                 backend.set_orientation(self.orientation.screen_orientation());
             }
             // a full screen or maximized window keeps its size, resizing it would take it out of that, full screen fits it on leaving
@@ -1173,6 +1177,7 @@ impl App {
                 top_shape: shape_idx,
                 fov_scale: settings.fov_scale,
                 hud_scale: settings.hud_scale,
+                auto_swap_select: settings.auto_swap_select,
                 filter: filter_idx,
                 integer_scale: settings.integer_scale,
                 hardware_rasterizer: settings.hardware_rasterizer,
@@ -1215,6 +1220,7 @@ impl App {
                 settings.fov_scale = st.fov_scale.clamp(0.8, 1.5);
                 settings.hud_scale = st.hud_scale.clamp(0.55, 1.0);
                 zakuro_core::native_bridge::set_hud_scale(settings.hud_scale);
+                settings.auto_swap_select = st.auto_swap_select;
                 settings.filter = settings::Filter::ALL.get(st.filter as usize).copied().unwrap_or_default();
                 settings.integer_scale = st.integer_scale;
                 settings.show_fps = st.show_fps;
@@ -1230,7 +1236,25 @@ impl App {
         overlay
     }
 
+    fn effective_layout(&self) -> zakuro_gpu::ScreenLayout {
+        if self.active.auto_swap_select
+            && self.layout == Screens::TopOnly
+            && zakuro_core::native_bridge::is_item_menu_active()
+        {
+            zakuro_gpu::ScreenLayout::ItemMenuSplit
+        } else {
+            self.layout.screens()
+        }
+    }
+
     fn present(&mut self, event_loop: &ActiveEventLoop) {
+        let effective = self.effective_layout();
+        if effective != self.effective_layout {
+            self.effective_layout = effective;
+            if let Some(backend) = &mut self.backend {
+                backend.set_layout(effective);
+            }
+        }
         let overlay = self.interface(event_loop);
         let blank = |screen: Screen| ((std::sync::Arc::new(Vec::new()), screen.width(), screen.height()), None);
         // the right eye's picture only while the 3D shows

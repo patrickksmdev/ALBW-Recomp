@@ -22,6 +22,7 @@ struct ImGuiMenuState {
     int top_shape;          // 0..=2 (5:3, 16:9, 21:9)
     float fov_scale;        // 0.80..=1.50
     float hud_scale;        // 0.55..=1.00
+    bool auto_swap_select;
     int filter;             // 0..=2
     bool integer_scale;
     bool hardware_rasterizer;
@@ -301,6 +302,9 @@ void albw_imgui_frame(ImGuiMenuState* st) {
                     ImGui::SameLine();
                     if (ImGui::Button("Padrão##hud")) {
                         st->hud_scale = 1.0f;
+                        st->actions |= (1u << 7);
+                    }
+                    if (ImGui::Checkbox("Trocar para Tela Inferior no Menu SELECT", &st->auto_swap_select)) {
                         st->actions |= (1u << 7);
                     }
                     ImGui::Spacing();

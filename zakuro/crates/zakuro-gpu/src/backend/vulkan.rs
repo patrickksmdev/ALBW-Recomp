@@ -741,9 +741,14 @@ impl VulkanPresenter {
                 );
             }
 
+            let clear_rgb = if self.arrangement == ScreenLayout::ItemMenuSplit {
+                [0.022, 0.014, 0.008, 1.0]
+            } else {
+                [0.0, 0.0, 0.0, 1.0]
+            };
             let clear = [vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
+                    float32: clear_rgb,
                 },
             }];
             device.cmd_begin_render_pass(
@@ -796,6 +801,40 @@ impl VulkanPresenter {
                 device.cmd_push_constants(command_buffer, layout, vk::ShaderStageFlags::VERTEX, VERT_CONSTANTS_OFFSET, &self.orientation.clockwise_angle().to_le_bytes());
                 device.cmd_push_constants(command_buffer, layout, vk::ShaderStageFlags::FRAGMENT, FRAG_CONSTANTS_OFFSET, &constants);
                 device.cmd_draw(command_buffer, 3, 1, 0, 0);
+            }
+
+            if self.arrangement == ScreenLayout::ItemMenuSplit {
+                if let Some((descriptor, area)) = crop(0) {
+                    let (vp, [u0, v0, u1, v1]) = super::item_menu_top_crop(
+                        self.extent.width,
+                        self.extent.height,
+                        self.orientation,
+                        self.top_width,
+                        self.integer,
+                    );
+                    let sub_x = area[0] + u0 * area[2];
+                    let sub_y = area[1] + v0 * area[3];
+                    let sub_w = (u1 - u0) * area[2];
+                    let sub_h = (v1 - v0) * area[3];
+                    let sub_area = [
+                        sub_x,
+                        sub_y,
+                        sub_w,
+                        sub_h,
+                        area[4].max(sub_x),
+                        area[5].max(sub_y),
+                        area[6].min(sub_x + sub_w),
+                        area[7].min(sub_y + sub_h),
+                    ];
+                    let mut constants: Vec<u8> = sub_area.iter().flat_map(|c| c.to_le_bytes()).collect();
+                    constants.extend_from_slice(&self.filter.mode().to_le_bytes());
+                    set_viewport(device, command_buffer, vp, self.extent);
+                    device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+                    device.cmd_bind_descriptor_sets(command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline_layout, 0, &[descriptor], &[]);
+                    device.cmd_push_constants(command_buffer, self.pipeline_layout, vk::ShaderStageFlags::VERTEX, VERT_CONSTANTS_OFFSET, &self.orientation.clockwise_angle().to_le_bytes());
+                    device.cmd_push_constants(command_buffer, self.pipeline_layout, vk::ShaderStageFlags::FRAGMENT, FRAG_CONSTANTS_OFFSET, &constants);
+                    device.cmd_draw(command_buffer, 3, 1, 0, 0);
+                }
             }
 
             painter.draw(device, command_buffer, self.frame, overlay, self.extent);

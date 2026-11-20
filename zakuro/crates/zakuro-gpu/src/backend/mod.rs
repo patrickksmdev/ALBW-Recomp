@@ -98,6 +98,8 @@ pub enum ScreenLayout {
     BottomOnly,
     /// the top screen big, the bottom one small at its lower right
     LargeTop,
+    /// item menu split: bottom screen large on the left, top description box cropped on the right
+    ItemMenuSplit,
 }
 
 /// the orientation of both screens, north is up
@@ -163,6 +165,7 @@ impl ScreenLayout {
             ScreenLayout::TopOnly => (top_width, 240.0),
             ScreenLayout::BottomOnly => (320.0, 240.0),
             ScreenLayout::LargeTop => (top_width + LARGE_TOP_BOTTOM.0 as f32, 240.0),
+            ScreenLayout::ItemMenuSplit => (top_width.max(426.6667), 240.0),
         }
     }
 }
@@ -190,7 +193,7 @@ pub fn layout(window_width: u32, window_height: u32, arrangement: ScreenLayout, 
         scale = scale.floor();
     }
 
-    let top = (arrangement != ScreenLayout::BottomOnly).then_some(Viewport {
+    let top = (!matches!(arrangement, ScreenLayout::BottomOnly | ScreenLayout::ItemMenuSplit)).then_some(Viewport {
         x: 0.0,
         y: 0.0,
         width: top_w * scale,
@@ -229,6 +232,16 @@ pub fn layout(window_width: u32, window_height: u32, arrangement: ScreenLayout, 
             width: 320.0 * scale,
             height: 240.0 * scale,
         }),
+        ScreenLayout::ItemMenuSplit => {
+            let w = (layout_width * 0.62).min(240.0 * (4.0 / 3.0));
+            let h = w * 0.75;
+            Some(Viewport {
+                x: layout_width * 0.01 * scale,
+                y: (240.0 - h) * 0.5 * scale,
+                width: w * scale,
+                height: h * scale,
+            })
+        }
     };
 
     let canvas_width = layout_width * scale;
@@ -258,6 +271,58 @@ pub fn layout(window_width: u32, window_height: u32, arrangement: ScreenLayout, 
         ..viewport
     };
     (top.map(offset), bottom.map(offset))
+}
+
+/// Computes the right-hand viewport and normalized UV rect `[u0, v0, u1, v1]` for the
+/// top-screen item description box when `ScreenLayout::ItemMenuSplit` is active.
+pub fn item_menu_top_crop(
+    window_width: u32,
+    window_height: u32,
+    orientation: ScreenOrientation,
+    top_w: f32,
+    integer: bool,
+) -> (Viewport, [f32; 4]) {
+    let (layout_width, layout_height) = ScreenLayout::ItemMenuSplit.size_f(top_w);
+    let (total_width, total_height) = if matches!(orientation, ScreenOrientation::East | ScreenOrientation::West) {
+        (layout_height, layout_width)
+    } else {
+        (layout_width, layout_height)
+    };
+    let mut scale = (window_width as f32 / total_width).min(window_height as f32 / total_height);
+    if integer && scale >= 1.0 {
+        scale = scale.floor();
+    }
+    let left_w = (layout_width * 0.62).min(240.0 * (4.0 / 3.0));
+    let x = layout_width * 0.01 + left_w + layout_width * 0.02;
+    let w = (layout_width - x - layout_width * 0.01).max(32.0);
+    let h = w / 2.055;
+    let y = (240.0 - h) * 0.5;
+    let vp = Viewport {
+        x: x * scale,
+        y: y * scale,
+        width: w * scale,
+        height: h * scale,
+    };
+    let canvas_width = layout_width * scale;
+    let canvas_height = layout_height * scale;
+    let vp = match orientation {
+        ScreenOrientation::North => vp,
+        ScreenOrientation::East => Viewport { x: canvas_height - vp.y - vp.height, y: vp.x, width: vp.height, height: vp.width },
+        ScreenOrientation::South => Viewport { x: canvas_width - vp.x - vp.width, y: canvas_height - vp.y - vp.height, width: vp.width, height: vp.height },
+        ScreenOrientation::West => Viewport { x: vp.y, y: canvas_width - vp.x - vp.width, width: vp.height, height: vp.width },
+    };
+    let mut offset_x = (window_width as f32 - total_width * scale) / 2.0;
+    let mut offset_y = (window_height as f32 - total_height * scale) / 2.0;
+    if integer {
+        offset_x = offset_x.floor();
+        offset_y = offset_y.floor();
+    }
+    let vp = Viewport {
+        x: offset_x + vp.x,
+        y: offset_y + vp.y,
+        ..vp
+    };
+    (vp, [0.055, 0.035, 0.945, 0.805])
 }
 
 /// how the top screen's two pictures (one per eye) get shown when the title draws in 3D

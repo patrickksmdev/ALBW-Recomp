@@ -26,6 +26,7 @@ pub struct ImGuiMenuState {
     pub top_shape: i32,
     pub fov_scale: f32,
     pub hud_scale: f32,
+    pub auto_swap_select: bool,
     pub filter: i32,
     pub integer_scale: bool,
     pub hardware_rasterizer: bool,

@@ -1,6 +1,8 @@
 //! Direct host-to-guest native bridges (M3), bypassing svc 0x32 IPC marshaling.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 use recomp_abi::Context;
 use zakuro_common::result::errors;
 use zakuro_cpu::Bus;
@@ -105,4 +107,27 @@ pub fn set_hud_scale(scale: f32) {
 #[no_mangle]
 pub extern "C" fn albw_get_hud_scale() -> f32 {
     f32::from_bits(HUD_SCALE_BITS.load(Ordering::Relaxed))
+}
+
+static BRIDGE_START: OnceLock<Instant> = OnceLock::new();
+static ITEM_MENU_LAST_SEEN_MS: AtomicU64 = AtomicU64::new(0);
+
+fn monotonic_ms() -> u64 {
+    let start = BRIDGE_START.get_or_init(Instant::now);
+    (start.elapsed().as_millis() as u64).saturating_add(1)
+}
+
+/// Called by guest layout draw hooks when the bottom-screen item menu (SELECT) is visible.
+#[no_mangle]
+pub extern "C" fn albw_notify_item_menu_active() {
+    ITEM_MENU_LAST_SEEN_MS.store(monotonic_ms(), Ordering::Relaxed);
+}
+
+/// Returns true while the bottom-screen item menu (SELECT) has been drawn recently.
+pub fn is_item_menu_active() -> bool {
+    let last = ITEM_MENU_LAST_SEEN_MS.load(Ordering::Relaxed);
+    if last == 0 {
+        return false;
+    }
+    monotonic_ms().saturating_sub(last) <= 80
 }

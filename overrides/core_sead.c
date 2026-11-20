@@ -4,6 +4,7 @@
 
 extern void albw_get_view_params(Context *ctx, float *out_top_width, float *out_fov_scale);
 extern float albw_get_hud_scale(void);
+extern void albw_notify_item_menu_active(void);
 
 static inline float read_f32_sead(Context *ctx, uint32_t addr) {
     uint32_t bits = mem_read32(ctx, addr);
@@ -167,8 +168,8 @@ static int is_main_hud_pane(const char *cname) {
            strncmp(cname, "L_Effects_", 10) == 0;
 }
 
-static void albw_scale_hud_from_pane(Context *ctx, uint32_t pane) {
-    enum { ROOT_NONE = 0, ROOT_MAIN_HUD = 1, ROOT_TOP_COUNTER = 2, ROOT_OTHER = 3 };
+static void albw_scale_hud_from_pane(Context *ctx, uint32_t pane, int is_draw_submit) {
+    enum { ROOT_NONE = 0, ROOT_MAIN_HUD = 1, ROOT_TOP_COUNTER = 2, ROOT_OTHER = 3, ROOT_ITEM_MENU = 4 };
     static struct {
         uint32_t root;
         uint8_t kind;
@@ -221,6 +222,10 @@ static void albw_scale_hud_from_pane(Context *ctx, uint32_t pane) {
                         kind = ROOT_TOP_COUNTER;
                         break;
                     }
+                    if (strcmp(cname, "L_Xbtn_00") == 0 || strcmp(cname, "P_CursorX_00") == 0) {
+                        kind = ROOT_ITEM_MENU;
+                        break;
+                    }
                     if (strncmp(cname, "N_", 2) == 0 && sp < 12) {
                         stack[sp++] = child;
                     }
@@ -230,6 +235,16 @@ static void albw_scale_hud_from_pane(Context *ctx, uint32_t pane) {
             r_idx = root_n++;
             roots[r_idx].root = root;
             roots[r_idx].kind = kind;
+        }
+    }
+
+    if (r_idx >= 0 && roots[r_idx].kind == ROOT_ITEM_MENU) {
+        if ((mem_read8(ctx, pane + 0x44u) & 1u) != 0 && mem_read8(ctx, pane + 0x46u) > 0) {
+            char pname[25];
+            read_pane_name(ctx, pane, pname);
+            if (strcmp(pname, "W_Window_00") == 0 || strcmp(pname, "P_WinBase_00") == 0) {
+                albw_notify_item_menu_active();
+            }
         }
     }
 
@@ -349,22 +364,22 @@ static void albw_scale_hud_from_pane(Context *ctx, uint32_t pane) {
 
 /* nw::lyt::Pane draw/submit helper called from 0x004373AC */
 RECOMP_OVERRIDE(0x00503388) {
-    albw_scale_hud_from_pane(ctx, ctx->r[2]);
+    albw_scale_hud_from_pane(ctx, ctx->r[2], 1);
     return original_0x00503388(ctx);
 }
 
 /* nw::lyt::Pane traversal functors (TextBox/Picture/Window/Bound) */
 RECOMP_OVERRIDE(0x00437244) {
-    albw_scale_hud_from_pane(ctx, ctx->r[1]);
+    albw_scale_hud_from_pane(ctx, ctx->r[1], 0);
     return original_0x00437244(ctx);
 }
 
 RECOMP_OVERRIDE(0x0043729C) {
-    albw_scale_hud_from_pane(ctx, ctx->r[1]);
+    albw_scale_hud_from_pane(ctx, ctx->r[1], 0);
     return original_0x0043729C(ctx);
 }
 
 RECOMP_OVERRIDE(0x004372F4) {
-    albw_scale_hud_from_pane(ctx, ctx->r[1]);
+    albw_scale_hud_from_pane(ctx, ctx->r[1], 0);
     return original_0x004372F4(ctx);
 }

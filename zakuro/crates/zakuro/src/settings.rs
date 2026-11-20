@@ -563,6 +563,9 @@ pub struct Settings {
     /// HUD scale multiplier (1.0 = default, <1.0 = smaller HUD)
     #[serde(default = "default_hud_scale")]
     pub hud_scale: f32,
+    /// automatically switch to the bottom screen while the SELECT item menu is open (in TopOnly layout)
+    #[serde(default = "default_auto_swap_select")]
+    pub auto_swap_select: bool,
     /// how the 3D shows
     #[serde(deserialize_with = "or_default")]
     pub stereo: Stereo3d,
@@ -620,6 +623,7 @@ impl Default for Settings {
             top_shape: TopShape::Console,
             fov_scale: 1.0,
             hud_scale: 1.0,
+            auto_swap_select: true,
             stereo: Stereo3d::Off,
             depth_3d: 50,
             swap_eyes: false,
@@ -652,6 +656,10 @@ fn default_fov_scale() -> f32 {
 
 fn default_hud_scale() -> f32 {
     1.0
+}
+
+fn default_auto_swap_select() -> bool {
+    true
 }
 
 fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
