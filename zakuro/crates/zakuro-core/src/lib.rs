@@ -1,8 +1,5 @@
 //! the emulated console, cpu, memory, HLE kernel and services, GPU, and the loop driving them all
 
-pub mod cheats;
-pub mod enhancements;
-pub mod cro;
 pub mod hints;
 pub mod idle;
 pub mod spin;
@@ -146,8 +143,6 @@ pub struct System {
     pub title: Option<Title>,
     /// the title's DLC
     pub dlc: Vec<zakuro_fs::Dlc>,
-    /// the title's cheats, from its file in the data folder
-    pub cheats: Vec<cheats::Cheat>,
     pub config: Config,
 
     pub exited: bool,
@@ -162,8 +157,6 @@ pub struct System {
     showing: [Option<zakuro_gpu::ScreenRef>; 3],
     /// frame interpolation's refresh count
     pacing: Pacing,
-    /// the dynamic module loader's state
-    pub cro: cro::CroManager,
     /// errors the title reported thru err:f, newest last
     pub fatal_errors: Vec<String>,
     /// undefined instrs we've seen, keeps the log readable
@@ -248,7 +241,6 @@ impl System {
             renderer: Box::new(SoftwareRenderer::default()),
             title: None,
             dlc: Vec::new(),
-            cheats: Vec::new(),
             config,
             exited: false,
             broke: false,
@@ -259,7 +251,6 @@ impl System {
             lcd_force_black: false,
             showing: [None, None, None],
             pacing: Pacing::default(),
-            cro: cro::CroManager::default(),
             fatal_errors: Vec::new(),
             undefined_seen: BTreeMap::new(),
             prefetch_aborts: BTreeMap::new(),
@@ -319,7 +310,6 @@ impl System {
         let input = self.services.hid.input;
         self.idle_interrupted(false);
         services::hid::update(self, input);
-        cheats::run(self);
         // run up to the boundary step() would end the frame at and end it here once,
         // not again when the next frame's first step sees it passed
         let deadline = self.next_frame_boundary;
@@ -1332,10 +1322,9 @@ impl System {
     /// a one line summary for the window title and the log
     pub fn status_line(&self) -> String {
         let mut line = format!(
-            "frame {} | {} threads | {} modules | {} draws | {} transfers | {} fills | gpu {:.1?}",
+            "frame {} | {} threads | {} draws | {} transfers | {} fills | gpu {:.1?}",
             self.frames,
             self.kernel.live_thread_count(),
-            self.cro.len(),
             self.gpu.draw_calls,
             self.gpu.transfers,
             self.gpu.fills,

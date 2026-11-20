@@ -8,10 +8,6 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::BTreeMap;
-
-use crate::cheats::Overwrote;
-use crate::cro::CroManager;
 use crate::kernel::Kernel;
 use crate::memory::MapState;
 use crate::services::fs::SavedFile;
@@ -29,7 +25,6 @@ struct SavedRef<'a> {
     kernel: &'a Kernel,
     services: &'a ServiceState,
     files: Vec<(u32, SavedFile)>,
-    cro: &'a CroManager,
     gpu: zakuro_gpu::state::GpuState,
     map: MapState,
     console: Console,
@@ -42,7 +37,6 @@ struct Saved {
     kernel: Kernel,
     services: ServiceState,
     files: Vec<(u32, SavedFile)>,
-    cro: CroManager,
     gpu: zakuro_gpu::state::GpuState,
     map: MapState,
     console: Console,
@@ -66,8 +60,6 @@ struct Console {
     history_index: u64,
     interpreted_instructions: u64,
     recompiled_instructions: u64,
-    /// what each enhancement overwrote, by name, so turning it off after loading puts that back too
-    enhancements: Vec<(String, BTreeMap<u32, Overwrote>)>,
 }
 
 /// the ROM images and RomFS layers the title's files read, in the order a state names them by
@@ -114,19 +106,12 @@ impl System {
             history_index: self.history_index as u64,
             interpreted_instructions: self.interpreted_instructions,
             recompiled_instructions: self.recompiled_instructions,
-            enhancements: self
-                .cheats
-                .iter()
-                .filter(|cheat| cheat.builtin && !cheat.overwrote.is_empty())
-                .map(|cheat| (cheat.name.clone(), cheat.overwrote.clone()))
-                .collect(),
         };
         let saved = SavedRef {
             cpu: &self.cpu,
             kernel: &self.kernel,
             services: &self.services,
             files,
-            cro: &self.cro,
             gpu: self.gpu.save_state(),
             map: self.memory.save_map(),
             console,
@@ -189,18 +174,6 @@ impl System {
         self.services = saved.services;
         self.services.fs.user_dir = user_dir;
         self.services.fs.files = files;
-        // the recompiled code of the modules goes where the state has them
-        if let Some(library) = &mut self.recompiled {
-            for module in &self.cro.modules {
-                library.place(&module.name, 0, &mut self.memory);
-            }
-        }
-        self.cro = saved.cro;
-        if let Some(library) = &mut self.recompiled {
-            for module in &self.cro.modules {
-                library.place(&module.name, module.base, &mut self.memory);
-            }
-        }
         self.gpu.load_state(&saved.gpu)?;
         let console = saved.console;
         self.exited = console.exited;
@@ -217,11 +190,6 @@ impl System {
         self.history_index = console.history_index as usize % HISTORY_LENGTH;
         self.interpreted_instructions = console.interpreted_instructions;
         self.recompiled_instructions = console.recompiled_instructions;
-        // an enhancement that's off now but was on when the state was saved puts back what it overwrote at the next frame
-        let mut overwrote: std::collections::HashMap<String, BTreeMap<u32, Overwrote>> = console.enhancements.into_iter().collect();
-        for cheat in self.cheats.iter_mut().filter(|cheat| cheat.builtin) {
-            cheat.overwrote = overwrote.remove(&cheat.name).unwrap_or_default();
-        }
         // what was about to be shown, and the pace of the in between pictures, start again
         self.showing = [None, None, None];
         self.pacing = Pacing::default();
@@ -302,31 +270,6 @@ mod tests {
     }
 
     /// an enhancement on when a state got saved and off when it's loaded in another session puts back what it overwrote
-    #[test]
-    fn a_state_keeps_what_an_enhancement_overwrote() {
-        let (mut system, _) = system_with_thread();
-        let page = system.memory.phys.allocate(MemoryRegion::Application, 0x1000).unwrap();
-        system.memory.map(0x0800_0000, page.addr, 0x1000, Permission::RW, MemoryState::Private);
-        system.memory.write_bytes(0x0800_0000, &[1]);
-        let mut fps = crate::cheats::Cheat::new("60 FPS", vec!["28000000 00000000".into()], Vec::new());
-        fps.builtin = true;
-        fps.enabled = true;
-        system.cheats = vec![fps];
-        crate::cheats::run(&mut system);
-        let state = system.save_state().unwrap();
-
-        // Zakuro started again, w/ the enhancement off
-        system.cheats[0].enabled = false;
-        system.cheats[0].overwrote.clear();
-        system.load_state(&state).unwrap();
-        let mut byte = [9];
-        system.memory.read_bytes(0x0800_0000, &mut byte);
-        assert_eq!(byte, [0], "the state has what the enhancement wrote");
-        crate::cheats::run(&mut system);
-        system.memory.read_bytes(0x0800_0000, &mut byte);
-        assert_eq!(byte, [1]);
-    }
-
     /// a state of another game, or not a state at all, gets turned down and nothing changes
     #[test]
     fn a_state_of_another_game_is_turned_down() {

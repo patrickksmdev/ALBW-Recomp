@@ -87,22 +87,6 @@ pub fn load(path: impl AsRef<std::path::Path>, mut config: Config) -> Result<Sys
 
     let mut system = System::new(config);
     system.dlc = dlc;
-    if let Some(data_dir) = &system.config.data_dir {
-        let path = crate::cheats::path(data_dir, title.program_id());
-        system.cheats = crate::cheats::load(&path);
-        let on = system.cheats.iter().filter(|cheat| cheat.enabled).count();
-        if !system.cheats.is_empty() {
-            log::info!("{} cheats in {}, {on} of them on", system.cheats.len(), path.display());
-        }
-    }
-    let build = crate::enhancements::build(&title);
-    let on = system.config.enhancements.get(&title.program_id()).cloned().unwrap_or_default();
-    let enhancements = crate::enhancements::cheats(title.program_id(), &build, &on);
-    if !enhancements.is_empty() {
-        let on: Vec<&str> = enhancements.iter().filter(|cheat| cheat.enabled).map(|cheat| cheat.name.as_str()).collect();
-        log::info!("{} enhancements for this build, {build}, on: {}", enhancements.len(), if on.is_empty() { "none".to_owned() } else { on.join(", ") });
-    }
-    system.cheats.extend(enhancements);
     system.memory = memory::Memory::new(system.config.new3ds, app_bytes);
     system.kernel = crate::kernel::Kernel::new(
         title.program_id(),
@@ -250,9 +234,6 @@ pub fn swap_recompiled(system: &mut System, path: &std::path::Path) -> Result<()
     let stale = library.check(&mut system.memory);
     if stale > 0 {
         log::warn!("{stale} functions changed since the game was recompiled, by a mod or in another version of the game, they run in the interpreter");
-    }
-    for module in &system.cro.modules {
-        library.place(&module.name, module.base, &mut system.memory);
     }
     system.hints = Some(crate::hints::Hints::new(path, text));
     system.recompiled = Some(library);
@@ -533,22 +514,14 @@ mod tests {
         }
     }
 
-    /// a game w/ an enhancement for its build has it among its cheats, on when the player turned it on
-    /// and an old kernel's game gets its linear heap at 0x14000000
+    /// an old kernel's game gets its linear heap at 0x14000000
     #[test]
-    fn a_game_has_the_enhancements_for_its_build() {
+    fn old_kernel_linear_heap() {
         use zakuro_fs::testing::{ncch, write};
         const SM3DL: u64 = 0x0004_0000_0005_4000;
         let game = write("loader-enhancements", "game.cxi", &ncch(SM3DL, Some(&[1; 8]), &[]));
-        let enhancements = [(SM3DL, vec!["60 FPS".to_owned()])].into_iter().collect();
-        let system = load(&game, Config { enhancements, ..Config::default() }).unwrap();
-        let fps = system.cheats.iter().find(|cheat| cheat.builtin).unwrap();
-        assert_eq!(fps.name, "60 FPS");
-        assert!(fps.enabled);
-        assert_eq!(system.kernel.linear_base, LINEAR_HEAP_VADDR_OLD3DS);
-
         let system = load(&game, Config::default()).unwrap();
-        assert!(!system.cheats.iter().find(|cheat| cheat.builtin).unwrap().enabled);
+        assert_eq!(system.kernel.linear_base, LINEAR_HEAP_VADDR_OLD3DS);
         std::fs::remove_file(game).unwrap();
     }
 }
